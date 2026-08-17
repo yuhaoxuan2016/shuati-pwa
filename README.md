@@ -62,7 +62,7 @@ npm run build
 
 ## 致谢
 
-本项目基于 [MYT6666](https://github.com/MYT6666) 的 shuati-bao 项目（MIT License）二次开发，在原项目基础上增加了 PWA 支持、腾讯云 CloudBase 云同步、手机端适配、AI 题目解析等功能。
+本项目基于 [MYT6666](https://github.com/MYT6666) 的 shuati-bao 项目（MIT License）二次开发，在原项目基础上增加了 PWA 支持、腾讯云 CloudBase 云同步、手机端适配等功能。
 
 ## License
 
