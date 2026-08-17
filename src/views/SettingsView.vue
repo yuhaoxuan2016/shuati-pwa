@@ -410,6 +410,12 @@
           </a>
         </div>
         <div class="oss-row">
+          <span class="oss-label">网页版源码</span>
+          <a class="oss-value link" href="https://github.com/yuhaoxuan2016/shuati-pwa" target="_blank" rel="noopener">
+            github.com/yuhaoxuan2016/shuati-pwa ↗
+          </a>
+        </div>
+        <div class="oss-row">
           <span class="oss-label">开源协议</span>
           <span class="oss-value">MIT License</span>
         </div>
