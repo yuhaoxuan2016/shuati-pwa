@@ -1,0 +1,492 @@
+<template>
+  <div
+    class="import"
+    :class="{ 'drop-active': dragActive }"
+    @dragenter.prevent="onDragEnter"
+    @dragover.prevent="onDragOver"
+    @dragleave.prevent="onDragLeave"
+    @drop.prevent="onDrop"
+  >
+    <h2>导入题库</h2>
+    <div v-if="bankId" class="target">导入到：{{ bankName }}</div>
+
+    <!-- 拖拽提示覆盖层 -->
+    <div v-if="dragActive && step === 1" class="drop-overlay">
+      <div class="drop-hint">
+        <div class="drop-icon">📂</div>
+        <div class="drop-text">松开鼠标导入文件</div>
+        <div class="drop-hint-small">支持 .docx / .txt / .md / .pdf</div>
+      </div>
+    </div>
+
+    <div class="step" v-if="step === 1">
+      <h3>步骤1：选择 Word 文件</h3>
+      <div class="engine-select">
+        <label><input type="radio" v-model="engine" value="local" /> 本地引擎（OCR + 规则解析）</label>
+        <label><input type="radio" v-model="engine" value="ai" /> AI 引擎（需配置 API Key）</label>
+      </div>
+      <button @click="pickFile">选择 .docx 文件</button>
+      <p class="hint">支持 .docx / .txt / .md / .pdf 格式。大文件或 PDF 可能需要 1-2 分钟，请耐心等待</p>
+      <p v-if="fileName">{{ fileName }}</p>
+    </div>
+
+    <div class="step" v-if="step === 2">
+      <h3>步骤2：识别中</h3>
+
+      <!-- 阶段指示器 -->
+      <div class="stages">
+        <div class="stage" :class="stageClass('reading')">
+          <span class="stage-icon">{{ stageIcon('reading') }}</span> 读取文件
+        </div>
+        <div class="stage-line" :class="{ done: stageIndex > 0 }"></div>
+        <div class="stage" :class="stageClass('parsing')">
+          <span class="stage-icon">{{ stageIcon('parsing') }}</span> 解析文档
+        </div>
+        <div class="stage-line" :class="{ done: stageIndex > 1 }"></div>
+        <div class="stage" :class="stageClass('recognizing')">
+          <span class="stage-icon">{{ stageIcon('recognizing') }}</span> {{ engine === 'ai' ? 'AI 识别' : '结构化识别' }}
+        </div>
+        <div class="stage-line" :class="{ done: stageIndex > 2 }"></div>
+        <div class="stage" :class="stageClass('saving')">
+          <span class="stage-icon">{{ stageIcon('saving') }}</span> 保存入库
+        </div>
+      </div>
+
+      <!-- 确定进度条（AI 分块识别阶段） -->
+      <div v-if="progress.total > 0" class="progress-bar">
+        <div class="progress-fill" :style="{ width: progressPct + '%' }"></div>
+        <span class="progress-text">{{ progress.done }} / {{ progress.total }} 块（{{ progressPct }}%）</span>
+      </div>
+
+      <!-- PDF 逐页进度条 -->
+      <div v-else-if="pdfProgress && pdfProgress.total > 0" class="progress-bar">
+        <div class="progress-fill" :style="{ width: (pdfProgress.total > 0 ? (pdfProgress.done / pdfProgress.total * 100) : 0) + '%' }"></div>
+        <span class="progress-text">{{ pdfProgress.done }} / {{ pdfProgress.total }} 页（{{ pdfProgress.total > 0 ? Math.round(pdfProgress.done / pdfProgress.total * 100) : 0 }}%）</span>
+      </div>
+
+      <!-- 不确定进度条（读取/解析/保存等不可追踪阶段） -->
+      <div v-else class="progress-bar indeterminate">
+        <div class="progress-fill-indeterminate"></div>
+      </div>
+
+      <p class="status-text">{{ status }}</p>
+      <p class="elapsed" v-if="elapsed > 0">已耗时 {{ elapsed }} 秒</p>
+      <p class="hint">识别中请勿关闭窗口。大题库可能需要 1-2 分钟；PDF 超过 5 分钟将自动停止</p>
+      <button v-if="engine === 'ai'" class="cancel-btn" @click="cancelImport" :disabled="cancelling">{{ cancelling ? '取消中...' : '取消导入' }}</button>
+      <button v-if="isPdfImporting" class="cancel-btn" @click="cancelPdfImport" :disabled="cancelling">{{ cancelling ? '取消中...' : '取消 PDF 导入' }}</button>
+    </div>
+
+    <div class="step" v-if="step === 2 && importWarning" style="border-color: #f56c6c;">
+      <p class="warning-text">{{ importWarning }}</p>
+    </div>
+
+    <div class="step" v-if="step === 3">
+      <h3>步骤3：校验识别结果（{{ reviewList.length }} 题）</h3>
+      <div v-if="importWarning" class="warning-box">{{ importWarning }}</div>
+      <ImportReviewTable :list="reviewList" @update="onUpdate" />
+      <div class="actions">
+        <button @click="confirmImport">确认导入</button>
+        <button @click="resetImport">重新选择</button>
+      </div>
+    </div>
+
+    <div class="step" v-if="step === 4">
+      <h3>导入成功！共 {{ importedCount }} 题</h3>
+      <button @click="$router.push(`/practice/${bankId}`)">开始刷题</button>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+// mammoth 改为动态 import，仅在用户选择文件后才加载（约 400KB 节省首屏）
+import { api, Question } from '../utils/api'
+import { toastError } from '../utils/toast'
+import { useBankStore } from '../stores/bank'
+import ImportReviewTable from '../components/ImportReviewTable.vue'
+import { parseText, parseHtml } from '../lib/parser'
+
+//#region debug-point import-crash-during
+// 调试插桩：仅 DEV 环境启用，向本地 debug server 上报崩溃点
+const DBG_URL = 'http://127.0.0.1:8899/logs'
+const DBG_SESSION = 'import-crash-during'
+const DBG_ENABLED = import.meta.env.DEV
+let dbgSeq = 0
+function dbg(stage: string, data: Record<string, unknown> = {}) {
+  if (!DBG_ENABLED) return
+  dbgSeq++
+  const payload = JSON.stringify({
+    ts: Date.now(),
+    level: 'info',
+    sessionId: DBG_SESSION,
+    stage,
+    seq: dbgSeq,
+    data
+  })
+  try {
+    fetch(DBG_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+      keepalive: true
+    }).catch(() => {})
+  } catch (e) { /* ignore */ }
+}
+//#endregion
+
+const route = useRoute()
+const router = useRouter()
+const bankStore = useBankStore()
+const bankId = ref(Number(route.params.bankId) || 0)
+const bankName = ref('')
+const step = ref(1)
+const fileName = ref('')
+const status = ref('')
+const reviewList = ref<Question[]>([])
+const importedCount = ref(0)
+const engine = ref<'local' | 'ai'>('local')
+const progress = ref({ done: 0, total: 0 })
+const importWarning = ref('')
+const cancelling = ref(false)
+// PDF 导入进度
+const pdfProgress = ref<{ stage: string; done: number; total: number; page?: number; success?: boolean } | null>(null)
+const isPdfImporting = computed(() => pdfProgress.value !== null && pdfProgress.value.stage === 'parsing')
+
+// 拖拽上传
+const dragActive = ref(false)
+let dragCounter = 0
+function onDragEnter() {
+  if (step.value !== 1) return
+  dragCounter++
+  dragActive.value = true
+}
+function onDragOver(e: DragEvent) {
+  if (step.value !== 1) return
+  e.dataTransfer!.dropEffect = 'copy'
+}
+function onDragLeave() {
+  dragCounter = Math.max(0, dragCounter - 1)
+  if (dragCounter === 0) dragActive.value = false
+}
+async function onDrop(e: DragEvent) {
+  dragActive.value = false
+  dragCounter = 0
+  if (step.value !== 1) return
+  const file = e.dataTransfer?.files?.[0]
+  if (!file) return
+  // 浏览器拖拽：直接拿 File 对象
+  const ext = (file.name.split('.').pop() || '').toLowerCase()
+  if (!['docx', 'txt', 'md', 'pdf'].includes(ext)) {
+    toastError('不支持的文件格式：' + ext + '（仅支持 .docx / .txt / .md / .pdf）')
+    return
+  }
+  fileName.value = file.name
+  await runImport(file)
+}
+
+// 进度阶段
+type Stage = 'reading' | 'parsing' | 'recognizing' | 'saving' | 'done'
+const stage = ref<Stage>('reading')
+const stageOrder: Stage[] = ['reading', 'parsing', 'recognizing', 'saving', 'done']
+const stageIndex = computed(() => stageOrder.indexOf(stage.value))
+const progressPct = computed(() => progress.value.total > 0 ? Math.round(progress.value.done / progress.value.total * 100) : 0)
+
+function stageClass(s: Stage) {
+  const idx = stageOrder.indexOf(s)
+  return { active: stage.value === s, done: stageIndex.value > idx }
+}
+function stageIcon(s: Stage) {
+  const idx = stageOrder.indexOf(s)
+  if (stageIndex.value > idx) return '✓'
+  if (stage.value === s) return '⟳'
+  return '○'
+}
+
+// 计时器
+const elapsed = ref(0)
+let timerId: number | null = null
+function startTimer() {
+  elapsed.value = 0
+  if (timerId) window.clearInterval(timerId)
+  timerId = window.setInterval(() => { elapsed.value++ }, 1000)
+}
+function stopTimer() {
+  if (timerId) { window.clearInterval(timerId); timerId = null }
+}
+
+onUnmounted(() => {
+  stopTimer()
+})
+
+onMounted(async () => {
+  if (!bankId.value) {
+    const name = prompt('请输入题库名称')
+    if (name) {
+      try {
+        const b = await bankStore.create(name, null)
+        bankId.value = b.id
+        bankName.value = b.name
+      } catch (e) {
+      toastError('创建题库失败：' + (e instanceof Error ? e.message : String(e)))
+      router.push('/')
+    }
+    } else {
+      router.push('/')
+    }
+  } else {
+    bankName.value = bankStore.banks.find(b => b.id === bankId.value)?.name || ''
+  }
+})
+
+function htmlToText(html: string): string {
+  // P0-3: 用 DOMParser 替代 innerHTML，避免 <img onerror=...> 等 XSS 风险
+  // parseToString('text/html') 不执行脚本/不触发内联事件
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  return doc.body.textContent || doc.body.innerText || ''
+}
+
+async function pickFile() {
+  dbg('pickFile_start', { engine: engine.value, bankId: bankId.value })
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.docx,.txt,.md,.pdf'
+  const file: File | null = await new Promise(resolve => {
+    input.onchange = () => resolve(input.files?.[0] || null)
+    input.click()
+  })
+  if (!file) return
+  const fileNameOnly = file.name
+  fileName.value = fileNameOnly
+  const ext = (fileNameOnly.split('.').pop() || '').toLowerCase()
+  if (!['docx', 'txt', 'md', 'pdf'].includes(ext)) {
+    toastError('不支持的文件格式：' + ext + '（仅支持 .docx / .txt / .md / .pdf）')
+    return
+  }
+  await runImport(file)
+}
+
+// 实际导入流程：传入 File 对象（浏览器版）
+async function runImport(file: File) {
+  const ext = (file.name.split('.').pop() || '').toLowerCase()
+  step.value = 2
+  progress.value = { done: 0, total: 0 }
+  importWarning.value = ''
+  cancelling.value = false
+  startTimer()
+
+  try {
+    // AI 引擎：先测试连通性，避免卡死
+    if (engine.value === 'ai') {
+      stage.value = 'reading'
+      status.value = '正在测试 AI 连接...'
+      dbg('ai_connection_test_start')
+      try {
+        await api.testAiConnection()
+        dbg('ai_connection_test_ok')
+      } catch (e) {
+        dbg('ai_connection_test_fail', { err: e instanceof Error ? e.message : String(e) })
+        throw new Error('AI 连接失败：' + (e instanceof Error ? e.message : String(e)) + '。请到设置页检查 API Key、地址、模型。')
+      }
+    }
+
+    // 阶段1+2：按文件类型分别处理
+    let html: string
+    let text: string
+    stage.value = 'reading'
+    if (ext === 'docx') {
+      // Word 文档：动态加载 mammoth
+      status.value = '正在读取 Word 文件...'
+      dbg('readFile_start', { name: file.name })
+      const arrayBuffer = await file.arrayBuffer()
+      dbg('readFile_done', { bytes: arrayBuffer.byteLength })
+      stage.value = 'parsing'
+      status.value = '正在解析 Word 文档...'
+      dbg('mammoth_start')
+      const mammoth = (await import('mammoth')).default
+      const result = await mammoth.convertToHtml({ arrayBuffer })
+      html = result.value
+      dbg('mammoth_done', { htmlLen: html.length, messages: result.messages.length })
+      text = htmlToText(html)
+    } else if (ext === 'pdf') {
+      // PDF：网页版暂不支持
+      throw new Error('PDF 导入在网页版暂不支持，请使用 TXT/MD/docx 格式')
+    } else {
+      // txt / md 等纯文本
+      status.value = '正在读取文本...'
+      dbg('readText_start', { name: file.name })
+      text = await file.text()
+      // 转成 mammoth 兼容 HTML：每个非空行包 <p>，后端会复用 html_to_questions
+      html = text
+        .split(/\r?\n/)
+        .map(l => l.trim())
+        .filter(l => l.length > 0)
+        .map(l => `<p>${l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`)
+        .join('\n')
+      dbg('readText_done', { textLen: text.length, htmlLen: html.length })
+    }
+
+    // 阶段3：识别
+    stage.value = 'recognizing'
+    if (engine.value === 'ai') {
+      status.value = 'AI 识别中（分块解析，请耐心等待...）'
+      progress.value = { done: 0, total: 0 }
+    } else {
+      status.value = '结构化识别中...'
+    }
+    if (engine.value === 'ai') {
+      dbg('importWithAi_call_start', { textLen: text.length })
+      const importResult = await api.importWithAi(bankId.value, text, (done, total) => {
+        progress.value = { done, total }
+      })
+      dbg('importWithAi_call_done', { count: importResult.count, expected: importResult.expected })
+      if (cancelling.value) {
+        importWarning.value = `已取消导入，仅识别到 ${importResult.count} 题（预计 ${importResult.expected} 题）。可重新选择文件再次导入。`
+        cancelling.value = false
+      } else if (importResult.expected > 0 && importResult.count < importResult.expected - 5) {
+        importWarning.value = `⚠ 识别到 ${importResult.count} 题，但文档预估约 ${importResult.expected} 题，可能有 ${importResult.expected - importResult.count} 题丢失（AI 输出截断或网络错误）。可尝试重新导入。`
+      }
+    } else {
+      dbg('importFromHtml_call_start', { htmlLen: html.length })
+      const cnt = await api.importFromHtml(bankId.value, html)
+      dbg('importFromHtml_call_done', { count: cnt })
+    }
+
+    // 阶段4：保存入库
+    stage.value = 'saving'
+    status.value = '正在保存到数据库...'
+    dbg('listQuestions_call_start', { bankId: bankId.value })
+    const qs = await api.listQuestions(bankId.value)
+    dbg('listQuestions_call_done', { count: qs.length })
+    dbg('reviewList_assign_start')
+    reviewList.value = qs
+    dbg('reviewList_assign_done')
+
+    stage.value = 'done'
+    stopTimer()
+    dbg('step3_switch_start')
+    step.value = 3
+    dbg('step3_switch_done')
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    dbg('pickFile_error', { msg, cancelling: cancelling.value, stack: e instanceof Error ? e.stack : undefined })
+    if (cancelling.value) {
+      status.value = '已取消导入'
+    } else {
+      status.value = '失败：' + msg
+    }
+    step.value = 1
+    stopTimer()
+    cancelling.value = false
+  }
+}
+
+async function cancelImport() {
+  cancelling.value = true
+  try {
+    await api.cancelImport()
+    status.value = '正在取消...'
+  } catch (e) {
+    console.error('取消失败：', e)
+  }
+}
+
+// 取消 PDF 导入：触发后端全局取消标志，pdf_to_html 循环将在下一页检查并退出
+async function cancelPdfImport() {
+  cancelling.value = true
+  try {
+    status.value = '正在取消 PDF 导入...'
+    await api.cancelPdfImport()
+  } catch (e) {
+    console.error('取消 PDF 导入失败：', e)
+  } finally {
+    cancelling.value = false
+  }
+}
+
+function onUpdate(q: Question) {
+  const i = reviewList.value.findIndex(x => x.id === q.id)
+  if (i >= 0) reviewList.value[i] = q
+}
+
+async function resetImport() {
+  if (bankId.value && reviewList.value.length > 0) {
+    try {
+      await api.clearBankQuestions(bankId.value)
+    } catch (e) {
+      console.error('清理已导入题目失败：', e)
+    }
+  }
+  reviewList.value = []
+  fileName.value = ''
+  importWarning.value = ''
+  step.value = 1
+}
+
+async function confirmImport() {
+  importedCount.value = reviewList.value.length
+  step.value = 4
+}
+</script>
+
+<style scoped>
+.import { position: relative; min-height: 100%; }
+.drop-active { outline: 2px dashed var(--color-primary); outline-offset: -8px; }
+.drop-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 1000; pointer-events: none; animation: dropFade 0.15s; }
+.drop-hint { background: var(--color-card); border-radius: var(--radius-lg); padding: 48px 80px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.3); border: 3px dashed var(--color-primary); }
+.drop-icon { font-size: 64px; margin-bottom: 12px; }
+.drop-text { font-size: 20px; font-weight: 600; color: var(--color-text); margin-bottom: 6px; }
+.drop-hint-small { font-size: 13px; color: var(--color-text-tertiary); }
+@keyframes dropFade { from { opacity: 0; } to { opacity: 1; } }
+
+.step { background: var(--color-card); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 24px; margin-top: 16px; }
+.actions { margin-top: 16px; display: flex; gap: 8px; }
+button { padding: 8px 16px; border: 1px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; background: var(--color-card); color: var(--color-text); }
+button:hover { background: var(--color-border-light); }
+.target { color: var(--color-text-secondary); margin-bottom: 12px; }
+.engine-select { margin-bottom: 12px; }
+.engine-select label { display: block; margin: 4px 0; }
+.hint { color: var(--color-text-tertiary); font-size: 13px; }
+.status-text { font-size: 15px; margin: 12px 0 4px; }
+.elapsed { color: var(--color-text-tertiary); font-size: 13px; margin: 4px 0; }
+
+/* 阶段指示器 */
+.stages { display: flex; align-items: center; margin: 16px 0; flex-wrap: wrap; gap: 4px; }
+.stage { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--color-text-tertiary); padding: 4px 8px; border-radius: var(--radius-sm); white-space: nowrap; }
+.stage.active { color: var(--color-primary); font-weight: 500; background: var(--color-primary-light); }
+.stage.done { color: var(--color-primary); }
+.stage-icon { font-size: 16px; }
+.stage.active .stage-icon { animation: spin 1s linear infinite; display: inline-block; }
+.stage-line { width: 20px; height: 2px; background: var(--color-border); }
+.stage-line.done { background: var(--color-primary); }
+
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* 确定进度条 */
+.progress-bar { position: relative; width: 100%; max-width: 500px; height: 28px; background: var(--color-border-light); border-radius: 14px; overflow: hidden; margin: 12px 0; }
+.progress-fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--color-primary); transition: width 0.3s; }
+.progress-text { position: absolute; width: 100%; text-align: center; line-height: 28px; font-size: 13px; color: var(--color-text); font-weight: 500; }
+
+/* 不确定进度条（条纹流动动画） */
+.progress-bar.indeterminate { background: var(--color-border-light); }
+.progress-fill-indeterminate { position: absolute; height: 100%; width: 40%; background: var(--color-primary); border-radius: 14px; animation: indeterminate 1.5s ease-in-out infinite; }
+@keyframes indeterminate {
+  0% { left: -40%; }
+  100% { left: 100%; }
+}
+
+.warning-box { background: var(--color-warning-light); border: 1px solid var(--color-warning); border-radius: var(--radius-md); padding: 12px; margin-bottom: 12px; color: var(--color-warning); font-size: 14px; }
+.warning-text { color: var(--color-danger); font-size: 14px; margin: 0; }
+.cancel-btn { margin-top: 12px; padding: 8px 20px; border: 1px solid var(--color-danger); border-radius: var(--radius-md); background: var(--color-card); color: var(--color-danger); cursor: pointer; font-size: 14px; }
+.cancel-btn:hover { background: var(--color-danger-light); }
+.cancel-btn:disabled { color: var(--color-text-tertiary); border-color: var(--color-border); cursor: not-allowed; }
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .step { padding: 16px; }
+  .drop-hint { padding: 28px 20px; }
+  .actions { flex-wrap: wrap; }
+  .actions button { flex: 1; }
+  .stage { padding: 3px 6px; font-size: 12px; }
+}
+</style>

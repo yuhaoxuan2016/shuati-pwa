@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Scripts (contains cloud credentials - DO NOT upload)
+scripts/
+
+# Backups (contains cloud data snapshots)
+backups/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Personal assets (replace with your own)
+public/wechat-qr.png
+public/contact-avatar.png
+public/share-card.png
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Build artifacts (minified bundles at root)
+.online-*.js
+
+# Personal assets in src/assets (replace with your own)
+src/assets/wechat-qr.png
+src/assets/alipay-qr.jpg
+
+# Temp reference materials
+tmp_logo_ref/
+
+# PWA generated
+dev-dist/
+
+# 截图/素材（本地保留，不上传）
+home-icons-shot.png
+
+# 旧 git 历史备份（含 envId，仅本地保留）
+.git.bak-envhistory/
