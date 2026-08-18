@@ -164,7 +164,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, Question } from '../utils/api'
-import { toastError } from '../utils/toast'
+import { toastError, toastSuccess } from '../utils/toast'
 import { useBankStore } from '../stores/bank'
 import QuestionCard, { type QuestionState } from '../components/QuestionCard.vue'
 import { classifyQuestionType } from '../lib/exam'
@@ -503,7 +503,9 @@ onBeforeUnmount(() => {
 async function onAnswered(payload: { correct: boolean; answer: string; duration_ms: number | null }) {
   const q = currentQuestion.value
   try {
-    await api.recordPractice({ bank_id: bankId, question_id: q.id, user_answer: payload.answer, is_correct: payload.correct, duration_ms: payload.duration_ms })
+    const res = await api.recordPractice({ bank_id: bankId, question_id: q.id, user_answer: payload.answer, is_correct: payload.correct, duration_ms: payload.duration_ms })
+    // 2026-08-19：连续答对达到阈值 → 自动移入「已掌握」
+    if (res?.autoMastered) toastSuccess(`🎉 连续答对 ${res.streak} 次，该题已自动移入「已掌握」`)
     // 累计每日统计（用于热力图）
     await bumpDailyRecord(payload.correct)
   } catch (e) {

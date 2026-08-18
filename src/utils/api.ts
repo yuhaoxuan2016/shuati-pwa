@@ -103,15 +103,41 @@ export const api = {
   async restartApp(): Promise<void> { location.reload() },
   async quitApp(): Promise<void> { window.close() },
   // === 练习记录 ===
-  async recordPractice(r: { bank_id: number; question_id: number; user_answer: string | null; is_correct: boolean; duration_ms: number | null }): Promise<void> {
+  // 返回 { autoMastered, streak }：autoMastered=true 表示本次答对触发「自动移入已掌握」；null 表示无错题本动作
+  async recordPractice(r: { bank_id: number; question_id: number; user_answer: string | null; is_correct: boolean; duration_ms: number | null }): Promise<{ autoMastered: boolean; streak: number } | null> {
     await idb.recordPractice({ ...r, practiced_at: new Date().toISOString() })
-    // 答错自动加入错题本
+    let signal: { autoMastered: boolean; streak: number } | null = null
     if (!r.is_correct) {
-      await idb.markWrong(r.bank_id, r.question_id)
+      // 答错自动加入错题本（连续答对计数清零）
+      await idb.markWrong(r.bank_id, r.question_id, 0)
+    } else {
+      // 答对：若该题在错题本 → 连续答对 +1；达到阈值自动转「已掌握」（2026-08-19 新增）
+      const rec = await idb.getWrongRecord(r.bank_id, r.question_id)
+      if (rec) {
+        const threshold = await api.getWrongMasterThreshold()
+        const streak = (rec.correct_streak ?? 0) + 1
+        if (threshold > 0 && streak >= threshold) {
+          await api.markWrongMastered(r.bank_id, r.question_id)
+          signal = { autoMastered: true, streak }
+        } else {
+          await idb.setWrongStreak(r.bank_id, r.question_id, streak)
+          signal = { autoMastered: false, streak }
+        }
+      }
     }
     scheduleCloudPush()
+    return signal
+  },
+  // 错题本自动掌握阈值：settings 'wrong_auto_master_threshold'（0=关闭，仅手动标记；默认 3 = 连续答对 3 次）
+  async getWrongMasterThreshold(): Promise<number> {
+    const v = await idb.getSetting('wrong_auto_master_threshold')
+    if (v == null || v === '') return 3
+    const n = parseInt(v, 10)
+    return Number.isFinite(n) && n >= 0 ? n : 3
   },
   async listWrong(bankId: number): Promise<number[]> { return idb.listWrong(bankId) },
+  // 错题本完整记录（含 correct_streak，供「连对 n 次」展示）
+  async listWrongRecords(bankId: number): Promise<any[]> { return idb.listWrongRecords(bankId) },
   async listMastered(bankId: number): Promise<number[]> { return idb.listMastered(bankId) },
   async markWrongMastered(bankId: number, questionId: number): Promise<void> {
     // 从错题表移除 → 记录云端删除标记（P1.2）

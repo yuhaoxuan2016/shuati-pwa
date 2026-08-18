@@ -205,7 +205,7 @@ export const idb = {
       req.onerror = () => reject(req.error)
     })
   },
-  async markWrong(bankId: number, questionId: number): Promise<void> {
+  async markWrong(bankId: number, questionId: number, streak?: number): Promise<void> {
     const db = await openDB()
     const exists = await new Promise<boolean>((resolve, reject) => {
       const t = db.transaction('wrong_questions', 'readonly')
@@ -215,10 +215,54 @@ export const idb = {
       req.onerror = () => reject(req.error)
     })
     if (!exists) {
-      await tx('wrong_questions', 'readwrite', s => s.add({ bank_id: bankId, question_id: questionId, created_at: new Date().toISOString() }))
+      // 2026-08-19：correct_streak = 连续答对计数（错题重练答对累计，达到阈值自动转「已掌握」）
+      await tx('wrong_questions', 'readwrite', s => s.add({ bank_id: bankId, question_id: questionId, created_at: new Date().toISOString(), correct_streak: streak ?? 0 }))
+    } else if (typeof streak === 'number') {
+      // 记录已存在：传入 streak 则更新（答错清零 / 云同步带回计数）；不传则保留本地
+      await this.setWrongStreak(bankId, questionId, streak)
     }
     // 2026-08-16（方案 B）：做错自动取消「已掌握」——从 mastered_questions 移除该记录
     await this.removeMastered(bankId, questionId)
+  },
+  // 查询错题本中某条记录（含 correct_streak 连续答对计数）；不在错题本返回 null
+  async getWrongRecord(bankId: number, questionId: number): Promise<any | null> {
+    const db = await openDB()
+    return new Promise((resolve, reject) => {
+      const t = db.transaction('wrong_questions', 'readonly')
+      const idx = t.objectStore('wrong_questions').index('bank_id')
+      const req = idx.getAll(IDBKeyRange.only(bankId))
+      req.onsuccess = () => resolve(req.result.find(x => x.question_id === questionId) ?? null)
+      req.onerror = () => reject(req.error)
+    })
+  },
+  // 更新错题记录的连续答对计数
+  async setWrongStreak(bankId: number, questionId: number, streak: number): Promise<void> {
+    const db = await openDB()
+    await new Promise<void>((resolve, reject) => {
+      const t = db.transaction('wrong_questions', 'readwrite')
+      t.oncomplete = () => resolve()
+      t.onerror = () => reject(t.error)
+      const store = t.objectStore('wrong_questions')
+      const idx = store.index('bank_id')
+      const req = idx.openCursor(IDBKeyRange.only(bankId))
+      req.onsuccess = () => {
+        const c = req.result
+        if (c && c.value.question_id === questionId) {
+          store.put({ ...c.value, correct_streak: streak })
+        } else if (c) c.continue()
+      }
+    })
+  },
+  // 错题本完整记录（含 correct_streak，供列表展示「连对 n 次」）
+  async listWrongRecords(bankId: number): Promise<any[]> {
+    const db = await openDB()
+    return new Promise((resolve, reject) => {
+      const t = db.transaction('wrong_questions', 'readonly')
+      const idx = t.objectStore('wrong_questions').index('bank_id')
+      const req = idx.getAll(IDBKeyRange.only(bankId))
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
   },
   // 从错题本直接删除记录（不做标记掌握，彻底移除）
   async removeWrong(bankId: number, questionId: number): Promise<void> {

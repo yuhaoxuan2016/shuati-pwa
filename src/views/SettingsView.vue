@@ -61,6 +61,19 @@
     </section>
 
     <section>
+      <h3>练习</h3>
+      <label>错题自动掌握
+        <select v-model="wrongAutoMaster" @change="saveWrongAutoMaster">
+          <option value="0">关闭（仅手动标记已掌握）</option>
+          <option value="2">连续答对 2 次</option>
+          <option value="3">连续答对 3 次（默认）</option>
+          <option value="5">连续答对 5 次</option>
+        </select>
+      </label>
+      <p class="hint">错题本中的题目在练习时连续答对指定次数，会自动移入「已掌握」；中途答错则重新计数。</p>
+    </section>
+
+    <section>
       <h3>更新</h3>
       <p class="hint">当前版本：<b>{{ currentVersion }}</b></p>
       <p class="hint">应用启动时会自动检查更新；也可手动点击下方按钮</p>
@@ -72,6 +85,12 @@
       </div>
       <div v-if="showUpdateLog" class="update-log">
         <h4>更新日志</h4>
+        <div class="log-entry">
+          <span class="log-version">v1.2.31</span>
+          <ul>
+            <li>错题本新增「自动掌握」：练习时连续答对指定次数（默认 3 次，可在设置→练习调整：关闭 / 2 / 3 / 5 次），题目自动移入「已掌握」；中途答错重新计数；错题列表显示「连对 n/阈值」进度，云同步保留计数</li>
+          </ul>
+        </div>
         <div class="log-entry">
           <span class="log-version">v1.2.30</span>
           <ul>
@@ -462,6 +481,15 @@ const cloudSyncing = ref(false)
 const cloudError = ref(false)
 const cloudStatusText = ref('')
 const syncNickname = ref('')
+const wrongAutoMaster = ref('3')
+
+// 错题自动掌握阈值（0=关闭；默认 3 = 连续答对 3 次）
+async function saveWrongAutoMaster() {
+  try {
+    await api.setSetting('wrong_auto_master_threshold', wrongAutoMaster.value)
+    toastSuccess(wrongAutoMaster.value === '0' ? '已关闭错题自动掌握' : `已设为连续答对 ${wrongAutoMaster.value} 次自动掌握`)
+  } catch { /* ignore */ }
+}
 
 // 同步昵称（跨设备身份）：默认随机生成，可自定义
 function saveSyncNickname() {
@@ -489,6 +517,7 @@ onMounted(async () => {
     // 读取主题/字号设置
     theme.value = (await api.getSetting('ui_theme')) || 'system'
     fontSize.value = (await api.getSetting('ui_font_size')) || 'medium'
+    wrongAutoMaster.value = (await api.getSetting('wrong_auto_master_threshold')) || '3'
     applyTheme()
     applyFontSize()
     // 读取真实数据库信息（不再依赖 db_path 设置项）
@@ -498,7 +527,7 @@ onMounted(async () => {
     console.error('获取数据库信息失败：', e)
     }
     // 读取应用版本（PWA 固定版本号）
-    currentVersion.value = '1.2.30-web'
+    currentVersion.value = '1.2.31-web'
     // 读取云同步配置
     loadCloudConfig()
     // 读取同步昵称

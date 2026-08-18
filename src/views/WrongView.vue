@@ -41,6 +41,7 @@
         >
           <span class="item-index">{{ index + 1 }}</span>
           <span class="item-preview">{{ getQuestionPreview(id) }}</span>
+          <span v-if="threshold > 0 && streakMap.get(id)" class="streak-tag" :class="{ near: (streakMap.get(id) || 0) >= threshold - 1 }">✅ 连对 {{ streakMap.get(id) }}/{{ threshold }}</span>
           <button class="quick-master-btn" title="标记已掌握" @click.stop="markMastered(id)">✓ 掌握</button>
           <button class="quick-del-btn" title="删除记录" @click.stop="removeWrong(id)">🗑</button>
         </li>
@@ -67,7 +68,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, Question } from '../utils/api'
-import { toastError } from '../utils/toast'
+import { toastError, toastSuccess } from '../utils/toast'
 import QuestionCard from '../components/QuestionCard.vue'
 
 const route = useRoute()
@@ -76,6 +77,8 @@ const allQuestions = ref<Question[]>([])
 const wrongIds = ref<number[]>([])
 const masteredIds = ref<number[]>([])
 const favoriteIds = ref<Set<number>>(new Set())
+const streakMap = ref<Map<number, number>>(new Map())  // 错题 id → 连续答对次数
+const threshold = ref(0)                               // 自动掌握阈值（0=关闭）
 const practicing = ref(false)
 const queue = ref<number[]>([])
 const idx = ref(0)
@@ -89,14 +92,16 @@ onMounted(async () => {
 async function loadData() {
   try {
     allQuestions.value = await api.listQuestions(bankId)
-    const [wrong, mastered, favs] = await Promise.all([
-      api.listWrong(bankId),
+    const [wrongRecs, mastered, favs] = await Promise.all([
+      api.listWrongRecords(bankId),
       api.listMastered(bankId),
       api.listFavorites(bankId),
     ])
-    wrongIds.value = wrong
+    wrongIds.value = wrongRecs.map((r: any) => r.question_id)
+    streakMap.value = new Map(wrongRecs.map((r: any) => [r.question_id, r.correct_streak ?? 0]))
     masteredIds.value = mastered
     favoriteIds.value = new Set(favs)
+    threshold.value = await api.getWrongMasterThreshold()
   } catch (e) {
     toastError('加载错题失败：' + (e instanceof Error ? e.message : String(e)))
   }
@@ -151,7 +156,15 @@ async function next() {
 async function onAnswered(payload: { correct: boolean; answer: string; duration_ms: number | null }) {
   if (current.value) {
     try {
-      await api.recordPractice({ bank_id: bankId, question_id: current.value.id, user_answer: payload.answer, is_correct: payload.correct, duration_ms: payload.duration_ms })
+      const res = await api.recordPractice({ bank_id: bankId, question_id: current.value.id, user_answer: payload.answer, is_correct: payload.correct, duration_ms: payload.duration_ms })
+      // 连续答对达到阈值 → 自动移入「已掌握」
+      if (res?.autoMastered) {
+        toastSuccess(`🎉 连续答对 ${res.streak} 次，已自动移入「已掌握」`)
+        await loadData()
+      } else if (res?.streak) {
+        // 更新本地连对计数展示（不重载列表，避免打断练习视图）
+        streakMap.value = new Map(streakMap.value).set(current.value.id, res.streak)
+      }
     } catch (e) {
       console.error('记录练习失败：', e)
     }
@@ -247,6 +260,9 @@ button:hover { background: var(--color-border-light); }
 .wrong-item.active { border-color: var(--color-primary); background: var(--color-primary-light); }
 .item-index { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--color-danger-light); color: var(--color-danger); font-size: 13px; font-weight: 600; flex-shrink: 0; }
 .item-preview { flex: 1; font-size: 14px; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 2026-08-19：连续答对计数徽标 */
+.streak-tag { padding: 2px 8px; border-radius: 10px; background: var(--color-success-light); color: #15803d; font-size: 11px; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+.streak-tag.near { background: #fef3c7; color: #b45309; }
 .quick-master-btn { padding: 4px 10px; border: 1px solid var(--color-success); border-radius: var(--radius-sm); background: var(--color-success-light); color: var(--color-success); cursor: pointer; font-size: 12px; white-space: nowrap; flex-shrink: 0; opacity: 0; transition: opacity 0.15s; }
 .wrong-item:hover .quick-master-btn, .wrong-item.active .quick-master-btn { opacity: 1; }
 .quick-master-btn:hover { background: var(--color-success); color: #fff; }

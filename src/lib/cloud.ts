@@ -527,7 +527,10 @@ async function writeLocal(coll: CloudCollection, doc: any): Promise<void> {
           const dup = await idb.findPracticeRecord?.(bankId, r.question_id, r.practiced_at) ?? false
           if (!dup) await idb.recordPractice(r)
         }
-        else if (coll === 'wrong_questions') await idb.markWrong(bankId, r.question_id)
+        else if (coll === 'wrong_questions') {
+          // 2026-08-19：保留云端 correct_streak（连续答对计数）；云端旧记录无该字段时保留本地计数
+          await idb.markWrong(bankId, r.question_id, typeof r.correct_streak === 'number' ? r.correct_streak : undefined)
+        }
         else if (coll === 'mastered_questions') await idb.markWrongMastered(bankId, r.question_id)
         else await idb.toggleFavoriteSafe?.(bankId, r.question_id)
       }

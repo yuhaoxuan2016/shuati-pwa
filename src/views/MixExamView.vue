@@ -378,8 +378,9 @@ async function onAnswered(payload: { correct: boolean; answer: string; duration_
   const q = currentQuestion.value
   if (!q) return
   try {
-    await api.recordPractice({ bank_id: q.bank_id, question_id: q.id, user_answer: payload.answer, is_correct: payload.correct, duration_ms: payload.duration_ms })
-    // 答错自动进错题本（api.recordPractice 内部处理）
+    const res = await api.recordPractice({ bank_id: q.bank_id, question_id: q.id, user_answer: payload.answer, is_correct: payload.correct, duration_ms: payload.duration_ms })
+    // 答错自动进错题本 / 答对连续计数自动掌握（api.recordPractice 内部处理）
+    if (res?.autoMastered) toastSuccess(`🎉 连续答对 ${res.streak} 次，该题已自动移入「已掌握」`)
   } catch (e) { console.error('记录练习失败：', e) }
 }
 function onToggleFavorite() {
