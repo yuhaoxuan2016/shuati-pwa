@@ -50,16 +50,36 @@
 
     <div v-else>
       <div v-if="!masteredIds.length" class="empty">还没有已掌握的错题</div>
-      <div v-else>
-        <p class="hint">已掌握 {{ masteredIds.length }} 题</p>
-        <ul class="mastered-list">
-          <li v-for="id in masteredIds" :key="id">
+      <template v-else>
+        <div class="actions-bar">
+          <button v-if="!practicing" @click="startMastered">已掌握重练</button>
+          <button v-if="practicing" @click="exitPractice">退出重练</button>
+        </div>
+
+        <QuestionCard
+          v-if="practicing && current"
+          :key="current.id"
+          :question="current"
+          :index="idx"
+          :favorited="favoriteIds.has(current.id)"
+          @answered="onAnswered"
+          @next="next"
+          @toggle-favorite="onToggleFavorite"
+        />
+
+        <div v-if="practicing && current" v-show="practiceMode === 'pending'" class="quick-actions">
+          <button class="master-btn" @click="markMastered(current.id)">标记已掌握</button>
+        </div>
+
+        <p v-if="!practicing" class="hint">已掌握 {{ masteredIds.length }} 题 · 点击题目可重做（答错会自动移回错题本）</p>
+        <ul v-if="!practicing" class="mastered-list">
+          <li v-for="id in masteredIds" :key="id" @click="jumpToMastered(id)" class="mastered-item">
             <span>{{ getQuestionPreview(id) }}</span>
-            <button class="restore-btn" @click="restoreToPending(id)">放回错题</button>
-            <button class="quick-del-btn" title="删除记录" @click="removeMastered(id)">🗑</button>
+            <button class="restore-btn" @click.stop="restoreToPending(id)">放回错题</button>
+            <button class="quick-del-btn" title="删除记录" @click.stop="removeMastered(id)">🗑</button>
           </li>
         </ul>
-      </div>
+      </template>
     </div>
   </div>
 </template>
@@ -84,6 +104,7 @@ const queue = ref<number[]>([])
 const idx = ref(0)
 const current = ref<Question | null>(null)
 const tab = ref<'pending' | 'mastered'>('pending')
+const practiceMode = ref<'pending' | 'mastered'>('pending')  // 当前练习队列来源：待重练 / 已掌握重练
 
 onMounted(async () => {
   await loadData()
@@ -110,6 +131,16 @@ async function loadData() {
 function start() {
   queue.value = [...wrongIds.value]
   idx.value = 0
+  practiceMode.value = 'pending'
+  practicing.value = true
+  loadCurrent()
+}
+
+// 2026-08-19：已掌握重练——把已掌握的题作为队列重新练习（答错自动移回错题本）
+function startMastered() {
+  queue.value = [...masteredIds.value]
+  idx.value = 0
+  practiceMode.value = 'mastered'
   practicing.value = true
   loadCurrent()
 }
@@ -121,6 +152,19 @@ function jumpToQuestion(questionId: number) {
   const pos = queue.value.indexOf(questionId)
   if (pos >= 0) {
     idx.value = pos
+    practiceMode.value = 'pending'
+    practicing.value = true
+    loadCurrent()
+  }
+}
+
+// 点击已掌握列表中的某道题，直接重做该题
+function jumpToMastered(questionId: number) {
+  queue.value = [...masteredIds.value]
+  const pos = queue.value.indexOf(questionId)
+  if (pos >= 0) {
+    idx.value = pos
+    practiceMode.value = 'mastered'
     practicing.value = true
     loadCurrent()
   }
@@ -129,6 +173,7 @@ function jumpToQuestion(questionId: number) {
 function exitPractice() {
   practicing.value = false
   current.value = null
+  practiceMode.value = 'pending'
 }
 
 function loadCurrent() {
@@ -155,15 +200,23 @@ async function next() {
 
 async function onAnswered(payload: { correct: boolean; answer: string; duration_ms: number | null }) {
   if (current.value) {
+    const qid = current.value.id
     try {
-      const res = await api.recordPractice({ bank_id: bankId, question_id: current.value.id, user_answer: payload.answer, is_correct: payload.correct, duration_ms: payload.duration_ms })
+      const res = await api.recordPractice({ bank_id: bankId, question_id: qid, user_answer: payload.answer, is_correct: payload.correct, duration_ms: payload.duration_ms })
       // 连续答对达到阈值 → 自动移入「已掌握」
       if (res?.autoMastered) {
         toastSuccess(`🎉 连续答对 ${res.streak} 次，已自动移入「已掌握」`)
         await loadData()
       } else if (res?.streak) {
         // 更新本地连对计数展示（不重载列表，避免打断练习视图）
-        streakMap.value = new Map(streakMap.value).set(current.value.id, res.streak)
+        streakMap.value = new Map(streakMap.value).set(qid, res.streak)
+      }
+      // 2026-08-19：已掌握重练答错 → 自动移回错题本（markWrong 内部已处理），从当前队列移除并刷新
+      // 当前题保持展示解析不打断；用户点「下一题」时队列已不含该题，自然跳过
+      if (!payload.correct && practiceMode.value === 'mastered') {
+        toastSuccess('答错了，该题已移回错题本「待重练」')
+        queue.value = queue.value.filter(id => id !== qid)
+        await loadData()
       }
     } catch (e) {
       console.error('记录练习失败：', e)
@@ -250,7 +303,9 @@ button:hover { background: var(--color-border-light); }
 .master-btn { background: var(--color-success-light); border-color: var(--color-success); color: var(--color-success); padding: 6px 14px; border-radius: var(--radius-md); cursor: pointer; }
 .master-btn:hover { background: var(--color-success); color: #fff; }
 .mastered-list { list-style: none; padding: 0; }
-.mastered-list li { display: flex; justify-content: space-between; align-items: center; padding: 12px; border: 1px solid var(--color-border-light); border-radius: var(--radius-md); margin-bottom: 8px; background: var(--color-card); }
+.mastered-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px; border: 1px solid var(--color-border-light); border-radius: var(--radius-md); margin-bottom: 8px; background: var(--color-card); cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.mastered-item:hover { border-color: var(--color-primary); background: var(--color-primary-light); }
+.mastered-item > span { flex: 1; font-size: 14px; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .restore-btn { background: var(--color-warning-light); border-color: var(--color-warning); color: var(--color-warning); padding: 4px 10px; font-size: 12px; }
 .restore-btn:hover { background: var(--color-warning); color: #fff; }
 /* 错题列表 */
