@@ -5,8 +5,8 @@
       <span class="type-tag">{{ typeLabel }}</span>
       <span v-if="elapsedSecs !== null" class="timer" title="本题用时">{{ formatTime(elapsedSecs) }}</span>
       <span class="stem-text">{{ question.stem }}</span>
-      <!-- 右上角操作按钮组（考试模式下隐藏，防作弊） -->
-      <div v-if="!examMode" class="card-toolbar">
+      <!-- 右上角操作按钮组（考试模式/回顾模式下隐藏，防作弊） -->
+      <div v-if="!examMode && !readOnly" class="card-toolbar">
         <button class="tool-btn" :class="{ active: favorited }" :title="favorited ? '取消收藏' : '收藏本题'" @click="$emit('toggle-favorite')">
           {{ favorited ? '★' : '☆' }}
         </button>
@@ -41,11 +41,13 @@
     </div>
 
     <div class="actions">
-      <button v-if="hasPrev" class="act-btn ghost" @click="manualPrev">← 上一题</button>
-      <button v-if="!submitted" class="act-btn primary" @click="submit">确认答案</button>
-      <button v-if="submitted && (!isSelfEval || selfEvalDone)" class="act-btn primary" @click="manualNext">下一题 →</button>
-      <button v-if="submitted && !isChoice && !isJudgeQuestion()" class="act-btn success" @click="selfEval(true)">✓ 答对</button>
-      <button v-if="submitted && !isChoice && !isJudgeQuestion()" class="act-btn danger" @click="selfEval(false)">✗ 答错</button>
+      <button v-if="hasPrev && !readOnly" class="act-btn ghost" @click="manualPrev">← 上一题</button>
+      <!-- 2026-08-20：deferSubmit 考试模式交卷前不锁定，点选后手动下一题；交卷统一判分 -->
+      <button v-if="!submitted && !deferSubmit" class="act-btn primary" @click="submit">确认答案</button>
+      <button v-if="!submitted && deferSubmit" class="act-btn primary" @click="manualNext">下一题 →</button>
+      <button v-if="submitted && (!isSelfEval || selfEvalDone) && !readOnly" class="act-btn primary" @click="manualNext">下一题 →</button>
+      <button v-if="submitted && !isChoice && !isJudgeQuestion() && !readOnly" class="act-btn success" @click="selfEval(true)">✓ 答对</button>
+      <button v-if="submitted && !isChoice && !isJudgeQuestion() && !readOnly" class="act-btn danger" @click="selfEval(false)">✗ 答错</button>
     </div>
 
     <QuestionEditDialog :visible="showEdit" :question="question" @close="showEdit = false" @saved="onQuestionSaved" />
@@ -169,6 +171,8 @@ const props = defineProps<{
   favorited?: boolean
   examMode?: boolean
   shuffleOptions?: boolean   // 选项乱序：打乱选项展示顺序，判分/答案高亮随映射自动对齐
+  deferSubmit?: boolean      // 2026-08-20：考试模式交卷前不锁定答案（点选只高亮，交卷统一判分，可随时修改）
+  readOnly?: boolean         // 2026-08-20：只读回顾（交卷后回看，隐藏工具栏与操作按钮）
 }>()
 const emit = defineEmits<{
   (e: 'answered', payload: { correct: boolean; answer: string; duration_ms: number | null }): void
@@ -318,11 +322,11 @@ const displayAnswer = computed(() => {
 })
 const keyHint = computed(() => {
   const suffix = props.examMode ? '' : '，F 收藏'
-  // 考试模式 + 自动下一题：提示点击即跳
+  // 考试模式 + 自动下一题：提示点击即跳（deferSubmit 只选中不锁定）
   if (props.examMode && props.autoNext) {
     if (isJudgeQuestion()) return '点击选项自动进入下一题' + suffix
     if (props.question.type === 'single') return '点击选项自动进入下一题' + suffix
-    return '选完按 Enter 确认自动下一题' + suffix
+    return props.deferSubmit ? '选完点「下一题」继续（可随时修改）' + suffix : '选完按 Enter 确认自动下一题' + suffix
   }
   if (isChoice.value) return '1-4 选选项，Enter 确认，← → 翻页' + suffix
   if (isJudgeQuestion()) return '1 正确 / 2 错误，← → 翻页' + suffix
@@ -349,6 +353,11 @@ function letter(i: number) { return String.fromCharCode(65 + i) }
 function toggle(i: number) {
   if (props.question.type === 'single') {
     selected.value = [i]
+    // 2026-08-20：考试模式 + deferSubmit → 只选中不锁定，交卷统一判分；自动下一题仍跳转
+    if (props.examMode && props.deferSubmit) {
+      if (props.autoNext) window.setTimeout(() => emit('next'), 300)
+      return
+    }
     // 考试模式 + 自动下一题：单选选完直接提交，无需点确认
     if (props.examMode && props.autoNext) {
       submit()
@@ -409,6 +418,11 @@ function getDurationMs(): number | null {
 }
 function answerJudge(val: boolean) {
   judgeSelected.value = val
+  // 2026-08-20：考试模式 + deferSubmit → 只切换不锁定，交卷统一判分（可反悔）；自动下一题仍跳转
+  if (props.examMode && props.deferSubmit) {
+    if (props.autoNext) window.setTimeout(() => emit('next'), 300)
+    return
+  }
   submitted.value = true
   // 答案缺失时无法判定对错，记为错误但不影响错题本判定逻辑
   isCorrect.value = props.question.answer ? (val === judgeAnswerBool(props.question.answer)) : false
@@ -466,7 +480,7 @@ function handleKeydown(e: KeyboardEvent) {
   // 忽略输入框中的按键（避免影响填空答题）
   const target = e.target as HTMLElement
   if (target && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT')) {
-    if (e.key === 'Enter' && !e.shiftKey && !submitted.value) {
+    if (e.key === 'Enter' && !e.shiftKey && !submitted.value && !props.deferSubmit) {
       e.preventDefault()
       submit()
     }
@@ -511,7 +525,7 @@ function handleKeydown(e: KeyboardEvent) {
       if (e.key === '1') { e.preventDefault(); answerJudge(true); return }
       if (e.key === '2') { e.preventDefault(); answerJudge(false); return }
     }
-    if (e.key === 'Enter' && isChoice.value) {
+    if (e.key === 'Enter' && isChoice.value && !props.deferSubmit) {
       e.preventDefault()
       submit()
     }

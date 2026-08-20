@@ -75,7 +75,7 @@
           <div class="record-value" @click="copyRecordCode">{{ lastRecordCode }} <span class="copy-tip">点击复制</span></div>
         </div>
         <div class="result-actions">
-          <button class="review-btn" :disabled="!wrongCount" @click="showWrongReview = true">🔍 查看错题（{{ wrongCount }}）</button>
+          <button class="review-btn" @click="openWrongReview">🔍 查看错题（{{ wrongCount }}）</button>
           <button @click="resetAll">🎲 再考一次（换新卷）</button>
           <button @click="goHome">返回首页</button>
         </div>
@@ -89,8 +89,35 @@
         </div>
       </div>
 
+      <!-- 2026-08-20：交卷后答题回顾（可逐题翻阅，红=错 绿=对） -->
+      <div v-if="submitted && examQuestions.length" class="review-section">
+        <h3 class="review-title">📋 答题回顾 <span class="review-sub">点击题号查看详情</span></h3>
+        <QuestionCard
+          :key="`${currentQuestion.id}-review-${reloadKey}`"
+          :question="currentQuestion"
+          :index="current"
+          :has-prev="current > 0"
+          :saved-state="answerStates.get(currentQuestion.id) || null"
+          :read-only="true"
+          @next="next"
+          @prev="prev"
+        />
+        <div class="level-tag">📁 所属等级：{{ levelNameOf(currentQuestion.id) }}</div>
+        <div class="question-nav" v-if="examQuestions.length > 1">
+          <div class="nav-dots">
+            <button
+              v-for="(q, i) in examQuestions"
+              :key="q.id"
+              class="nav-dot"
+              :class="getDotClass(i, q.id)"
+              @click="goTo(i)"
+            >{{ i + 1 }}</button>
+          </div>
+        </div>
+      </div>
+
       <!-- 答题区 -->
-      <div v-else-if="examQuestions.length">
+      <div v-if="!submitted && examQuestions.length">
         <QuestionCard
           :key="`${currentQuestion.id}-${reloadKey}`"
           :question="currentQuestion"
@@ -99,6 +126,7 @@
           :auto-next="autoNext"
           :has-prev="current > 0"
           :saved-state="answerStates.get(currentQuestion.id) || null"
+          :defer-submit="true"
           @answered="onAnswered"
           @state-change="onStateChange"
           @next="next"
@@ -157,6 +185,7 @@
               <div v-if="w.analysis" class="wrong-analysis">💡 {{ w.analysis }}</div>
             </div>
           </div>
+          <p v-else class="hint">本场没有错题，太棒了！🎉</p>
           <div class="modal-actions">
             <button @click="showWrongReview = false">关闭</button>
           </div>
@@ -194,7 +223,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import { listPublicBankQuestions, classifyQuestionType, judgeAnswerBool, COMPOSE_SPEC as SPEC } from '../lib/exam'
+import { listPublicBankQuestions, classifyQuestionType, judgeAnswerBool, gradeByState, COMPOSE_SPEC as SPEC } from '../lib/exam'
 import { idb } from '../lib/db'
 import { toastError, toastSuccess } from '../utils/toast'
 import QuestionCard, { type QuestionState } from '../components/QuestionCard.vue'
@@ -342,12 +371,19 @@ async function submit() {
   stopTimer()
   let correct = 0, wrong = 0, unanswered = 0
   const bd = new Map<string, { correct: number; wrong: number; unanswered: number }>()
+  // 2026-08-20：交卷统一判分（考试模式 deferSubmit 不锁定，交卷时才判定并补写状态供回顾）
   for (const q of examQuestions.value) {
-    const state = answerStates.value.get(q.id)
+    const raw = answerStates.value.get(q.id)
     const lv = levelOfMap.value.get(q.id) || '未知'
     const b = bd.get(lv) || { correct: 0, wrong: 0, unanswered: 0 }
-    if (!state || !state.submitted) { unanswered++; b.unanswered++ }
-    else if (state.isCorrect) { correct++; b.correct++ }
+    let st: QuestionState | null = null
+    if (raw) {
+      const isCorrect = gradeByState(q, raw)
+      st = { ...raw, submitted: true, isCorrect }
+      answerStates.value.set(q.id, st)
+    }
+    if (!st) { unanswered++; b.unanswered++ }
+    else if (st.isCorrect) { correct++; b.correct++ }
     else { wrong++; b.wrong++ }
     bd.set(lv, b)
   }
@@ -366,6 +402,12 @@ async function submit() {
   } catch (e) {
     console.warn('保存组卷记录失败：', e)
   }
+}
+
+// 2026-08-20 修复：当场考试的错题明细此前从未构建（只有历史记录回看才有），点「查看错题」永远显示 0
+function openWrongReview() {
+  reviewWrongs.value = buildWrongs(examQuestions.value, Object.fromEntries(answerStates.value))
+  showWrongReview.value = true
 }
 
 // 生成记录码：随机 4 位大写字母数字（带 Z 前缀区分组卷记录）
@@ -680,6 +722,11 @@ onBeforeUnmount(() => stopTimer())
 
 .result-panel { text-align: center; padding: 32px; }
 .result-panel h3 { margin-bottom: 24px; }
+
+/* 2026-08-20：交卷后答题回顾区 */
+.review-section { margin-top: 24px; }
+.review-title { text-align: center; margin-bottom: 14px; font-size: 17px; }
+.review-sub { font-size: 12px; color: var(--color-text-tertiary); font-weight: 400; margin-left: 8px; }
 .result-stats { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; }
 .stat-card { background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); padding: 16px 24px; min-width: 100px; }
 .stat-card.highlight { background: linear-gradient(135deg, #7c3aed, #4f46e5); color: #fff; border-color: transparent; }

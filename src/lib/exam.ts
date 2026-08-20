@@ -745,7 +745,7 @@ export function gradeExam(
 }
 
 // 判断题内容识别：type='judge'，或选项恰为「正确/错误」二元组的 single/multi 旧快照
-function isJudgeLike(q: { type?: string; options?: string | null }): boolean {
+export function isJudgeLike(q: { type?: string; options?: string | null }): boolean {
   if (q.type === 'judge') return true
   try {
     const p = JSON.parse(q.options || '[]')
@@ -776,6 +776,28 @@ function checkAnswer(q: ExamQuestion, a: { selected: number[]; blank: string; ju
   if (!q.answer) return false
   const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '')
   return norm(a.blank) === norm(q.answer)
+}
+
+// 2026-08-20：考试模式「交卷统一判分」——基于 QuestionCard 的暂存状态（deferSubmit 模式）
+// st.selected 为原始下标（QuestionCard emitState 已转回），与 ExamResult.answers 判分口径一致
+export function gradeByState(
+  q: ExamQuestion,
+  st: { selected: number[]; judgeSelected: boolean | null; blankAnswer?: string | null },
+): boolean {
+  if (isJudgeLike(q)) {
+    if (st.judgeSelected == null) return false
+    const ans = judgeAnswerBool(q.answer, judgeOptionsOf(q)) === 'true'
+    return st.judgeSelected === ans
+  }
+  if (q.type === 'single' || q.type === 'multi') {
+    if (!st.selected.length) return false
+    const picked = [...st.selected].sort((x, y) => x - y)
+    return JSON.stringify(picked) === JSON.stringify(parseAnswerLetters(q.answer))
+  }
+  // 填空/问答
+  if (!q.answer) return false
+  const norm = (s: string) => (s || '').trim().toLowerCase().replace(/\s+/g, '')
+  return norm(st.blankAnswer || '') === norm(q.answer)
 }
 
 function parseAnswerLetters(answer: string | null): number[] {

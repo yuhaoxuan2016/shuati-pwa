@@ -135,8 +135,35 @@
         </div>
       </div>
 
+      <!-- 2026-08-20：交卷后答题回顾（可逐题翻阅，红=错 绿=对） -->
+      <div v-if="submitted && examQuestions.length" class="review-section">
+        <h3 class="review-title">📋 答题回顾 <span class="review-sub">点击题号查看详情</span></h3>
+        <QuestionCard
+          :key="`${currentQuestion.id}-review-${reloadKey}`"
+          :question="currentQuestion"
+          :index="current"
+          :has-prev="current > 0"
+          :saved-state="answerStates.get(currentQuestion.id) || null"
+          :read-only="true"
+          @next="next"
+          @prev="prev"
+        />
+        <div class="bank-tag">📁 所属题库：{{ bankNameOf(currentQuestion.bank_id) }}</div>
+        <div class="question-nav" v-if="examQuestions.length > 1">
+          <div class="nav-dots">
+            <button
+              v-for="(q, i) in examQuestions"
+              :key="q.id"
+              class="nav-dot"
+              :class="getDotClass(i, q.id)"
+              @click="goTo(i)"
+            >{{ i + 1 }}</button>
+          </div>
+        </div>
+      </div>
+
       <!-- 答题区 -->
-      <div v-else-if="examQuestions.length">
+      <div v-if="!submitted && examQuestions.length">
         <QuestionCard
           :key="`${currentQuestion.id}-${reloadKey}`"
           :question="currentQuestion"
@@ -145,6 +172,7 @@
           :auto-next="autoNext"
           :has-prev="current > 0"
           :saved-state="answerStates.get(currentQuestion.id) || null"
+          :defer-submit="true"
           @answered="onAnswered"
           @state-change="onStateChange"
           @next="next"
@@ -176,7 +204,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBankStore } from '../stores/bank'
 import { api, Question } from '../utils/api'
-import { classifyQuestionType } from '../lib/exam'
+import { classifyQuestionType, gradeByState, isJudgeLike } from '../lib/exam'
 import { toastError, toastSuccess } from '../utils/toast'
 import QuestionCard, { type QuestionState } from '../components/QuestionCard.vue'
 
@@ -341,16 +369,32 @@ function stopTimer() {
   if (timerId) { window.clearInterval(timerId); timerId = null }
 }
 
-function submit() {
+async function submit() {
   if (submitted.value) return
   stopTimer()
   let correct = 0, wrong = 0, unanswered = 0
   const bd = new Map<number, { name: string; correct: number; wrong: number; unanswered: number }>()
+  // 2026-08-20：交卷统一判分（考试模式 deferSubmit 不锁定，交卷时才判定并补写状态供回顾）
+  // 原「每答一题即 recordPractice」改为交卷后统一写入（答错自动进错题本）
+  const recs: { bank_id: number; question_id: number; user_answer: string | null; is_correct: boolean; duration_ms: number | null }[] = []
   for (const q of examQuestions.value) {
-    const state = answerStates.value.get(q.id)
+    const raw = answerStates.value.get(q.id)
     const b = bd.get(q.bank_id) || { name: bankNameOf(q.bank_id), correct: 0, wrong: 0, unanswered: 0 }
-    if (!state || !state.submitted) { unanswered++; b.unanswered++ }
-    else if (state.isCorrect) { correct++; b.correct++ }
+    let st: QuestionState | null = null
+    if (raw) {
+      const isCorrect = gradeByState(q, raw)
+      st = { ...raw, submitted: true, isCorrect }
+      answerStates.value.set(q.id, st)
+      recs.push({
+        bank_id: q.bank_id,
+        question_id: q.id,
+        user_answer: formatAnswerForRecord(q, raw),
+        is_correct: isCorrect,
+        duration_ms: raw.elapsedSecs != null ? raw.elapsedSecs * 1000 : null,
+      })
+    }
+    if (!st) { unanswered++; b.unanswered++ }
+    else if (st.isCorrect) { correct++; b.correct++ }
     else { wrong++; b.wrong++ }
     bd.set(q.bank_id, b)
   }
@@ -360,6 +404,20 @@ function submit() {
   result.value = { correct, wrong, unanswered, score, accuracy }
   bankBreakdown.value = Array.from(bd.entries()).map(([bank_id, v]) => ({ bank_id, ...v }))
   submitted.value = true
+  // 交卷后统一写入练习记录
+  for (const r of recs) {
+    try { await api.recordPractice(r) } catch (e) { console.error('记录练习失败：', e) }
+  }
+}
+
+// 交卷统一写入练习记录用的答案格式：判断 'true'/'false'、选择题字母串、填空原文
+function formatAnswerForRecord(q: Question, st: QuestionState): string | null {
+  if (isJudgeLike(q)) return st.judgeSelected == null ? null : String(st.judgeSelected)
+  if (q.type === 'single' || q.type === 'multi') {
+    if (!st.selected.length) return null
+    return st.selected.map(i => String.fromCharCode(65 + i)).join('')
+  }
+  return st.blankAnswer || null
 }
 
 function next() {
@@ -375,6 +433,7 @@ function onStateChange(state: QuestionState) {
   if (q) answerStates.value.set(q.id, state)
 }
 async function onAnswered(payload: { correct: boolean; answer: string; duration_ms: number | null }) {
+  // 2026-08-20：考试模式 deferSubmit 下答题不再立即提交，此回调不触发（交卷统一判分 + recordPractice）
   const q = currentQuestion.value
   if (!q) return
   try {
@@ -492,6 +551,11 @@ onBeforeUnmount(() => stopTimer())
 
 .result-panel { text-align: center; padding: 32px; }
 .result-panel h3 { margin-bottom: 24px; }
+
+/* 2026-08-20：交卷后答题回顾区 */
+.review-section { margin-top: 24px; }
+.review-title { text-align: center; margin-bottom: 14px; font-size: 17px; }
+.review-sub { font-size: 12px; color: var(--color-text-tertiary); font-weight: 400; margin-left: 8px; }
 .result-stats { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; }
 .stat-card { background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); padding: 16px 24px; min-width: 100px; }
 .stat-card.highlight { background: linear-gradient(135deg, #7c3aed, #4f46e5); color: #fff; border-color: transparent; }
