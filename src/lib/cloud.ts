@@ -334,64 +334,44 @@ export async function syncFromCloud(): Promise<{ pulled: number }> {
 }
 
 // 本地 → 云端（推送本设备私人数据；公共数据人人可读无需同步，rabbit 2026-08-15 明确）
+// 2026-08-21 性能优化（方案 A+B，解决「云同步速度慢」）：
+// - A 并发推送：逐条串行改为 6 并发批量（Promise.allSettled），单条失败不中断整体，最后汇总失败数提示
+// - B 增量推送：本地记录带 synced_at（最近成功推送时间）。有 synced_at = 已同步未改动 → 跳过；
+//   本地写操作会清掉/不带 synced_at（标脏）→ 下次推送自动补推；推送成功后回写 synced_at；
+//   云端拉取写入（writeLocal）也带 synced_at → 不会又被推回去。
+//   settings 集合量小（5 条）且 key 结构特殊，保持全推不参与增量。
 export async function pushToCloud(): Promise<{ pushed: number }> {
   if (!(await ensureApp())) return { pushed: 0 }
   if (!isAuthed()) return { pushed: 0 }
   cloudState.syncing = true
   cloudState.error = null
   const syncKey = getSyncKey()
+  const PUSH_CONCURRENCY = 6 // 并发上限（腾讯云数据库 API 限流安全值）
   try {
     let pushed = 0
+    let failed = 0
     // 先处理删除标记：取消收藏/标记掌握/放回等删除类操作同步到云端（P1.2 修复）
     await applyDeletedMarks()
     for (const coll of CLOUD_COLLECTIONS) {
       const localRows = await listLocalAll(coll)
-      for (const r of localRows) {
-        // 跳过从云端共享来的公共题库及其题目/记录（避免覆盖原作者数据）
-        if (coll === 'quiz_banks' && r.cloud_shared) continue
-        if (coll === 'questions' && r.cloud_shared) continue
-        // 只推私人数据：公共题库（所有人可读）不需要同步到云端
-        if (coll === 'quiz_banks' && r.visibility === 'public') continue
-        if (coll === 'questions' && r._bank_visibility === 'public') continue
-        const doc = { ...r, sync_key: syncKey }
-        if (typeof doc.id === 'number') {
-          // 有 cloud_id 则沿用云端身份（同昵称换设备不重复创建）；否则用 uid 前缀防撞
-          doc._id = doc.cloud_id || ('l' + coll + '_' + uidPrefix() + '_' + doc.id)
-          doc._local_id = doc.id
-          delete doc.id
-        }
-        if (coll === 'questions' && typeof doc._bank_id === 'number') {
-          doc._local_bank_id = doc._bank_id
-          // 题目继承所属题库的可见性（ACL 用 doc.visibility 判断公共/私有）
-          const bank = await idb.getBank?.(doc._bank_id).catch?.(() => null)
-          doc.visibility = bank?.visibility || doc.visibility || 'public'
-          // 记录题库的云端 _id（若该题库已同步过），供公共题库跨用户关联题目
-          if (bank?.cloud_id) doc.bank_ref = bank.cloud_id
-          delete doc._bank_id
-        }
-        if ((coll === 'practice_records' || coll === 'wrong_questions' || coll === 'mastered_questions' || coll === 'favorites') && typeof doc.bank_id === 'number') {
-          doc._local_bank_id = doc.bank_id
-          // 保留 bank_id 供云端统计；拉取时用 _local_bank_id 回映
-        }
-        await pushDoc(coll, doc)
-        // 题库/题目推送后回写云端 _id（供题目 bank_ref 关联 / 同昵称换设备保持身份）
-        if ((coll === 'quiz_banks' || coll === 'questions') && typeof r.id === 'number' && doc._id) {
-          if (coll === 'quiz_banks') {
-            const bank = await idb.getBank?.(r.id)
-            if (bank && !bank.cloud_id) {
-              await idb.updateBank?.({ ...bank, cloud_id: doc._id })
-            }
-          } else {
-            const q = await idb.getQuestion?.(r.id)
-            if (q && !q.cloud_id) {
-              await idb.updateQuestion?.({ ...q, cloud_id: doc._id })
-            }
+      // 增量过滤：有 synced_at = 已同步且本地未改动 → 跳过；settings 永远全推（量小）
+      const dirty = coll === 'settings' ? localRows : localRows.filter(r => !r.synced_at)
+      for (let i = 0; i < dirty.length; i += PUSH_CONCURRENCY) {
+        const batch = dirty.slice(i, i + PUSH_CONCURRENCY)
+        const results = await Promise.allSettled(batch.map(r => pushOne(coll, r, syncKey)))
+        for (const res of results) {
+          if (res.status === 'fulfilled' && res.value) pushed++
+          else if (res.status === 'rejected') {
+            failed++
+            console.warn(`推送 ${coll} 失败：`, res.reason?.message || res.reason)
           }
         }
-        pushed++
       }
     }
     cloudState.lastSyncAt = now()
+    if (failed > 0) {
+      cloudState.error = `推送完成，但有 ${failed} 条记录推送失败（网络或权限问题），请稍后重试`
+    }
     return { pushed }
   } catch (e: any) {
     cloudState.error = '推送失败：' + (e?.message || String(e))
@@ -399,6 +379,69 @@ export async function pushToCloud(): Promise<{ pushed: number }> {
     return { pushed: 0 }
   } finally {
     cloudState.syncing = false
+  }
+}
+
+// 推送单条本地记录（原 pushToCloud 循环体拆出）→ true 表示成功
+async function pushOne(coll: CloudCollection, r: any, syncKey: string): Promise<boolean> {
+  const doc = { ...r, sync_key: syncKey }
+  if (typeof doc.id === 'number') {
+    // 有 cloud_id 则沿用云端身份（同昵称换设备不重复创建）；否则用 uid 前缀防撞
+    doc._id = doc.cloud_id || ('l' + coll + '_' + uidPrefix() + '_' + doc.id)
+    doc._local_id = doc.id
+    delete doc.id
+  }
+  if (coll === 'questions' && typeof doc._bank_id === 'number') {
+    doc._local_bank_id = doc._bank_id
+    // 题目继承所属题库的可见性（ACL 用 doc.visibility 判断公共/私有）
+    const bank = await idb.getBank?.(doc._bank_id).catch?.(() => null)
+    doc.visibility = bank?.visibility || doc.visibility || 'public'
+    // 记录题库的云端 _id（若该题库已同步过），供公共题库跨用户关联题目
+    if (bank?.cloud_id) doc.bank_ref = bank.cloud_id
+    delete doc._bank_id
+  }
+  if ((coll === 'practice_records' || coll === 'wrong_questions' || coll === 'mastered_questions' || coll === 'favorites') && typeof doc.bank_id === 'number') {
+    doc._local_bank_id = doc.bank_id
+    // 保留 bank_id 供云端统计；拉取时用 _local_bank_id 回映
+  }
+  await pushDoc(coll, doc)
+  // 推送成功 → 回写 synced_at + 首次推送的 cloud_id（增量标记；回写失败不影响推送结果）
+  await markSynced(coll, r, doc._id ? String(doc._id) : null)
+  return true
+}
+
+// 推送成功后回写本地：synced_at（增量标记）；quiz_banks/questions 同时回写 cloud_id（云端身份）
+async function markSynced(coll: CloudCollection, r: any, cloudId: string | null): Promise<void> {
+  try {
+    let row: any
+    if (coll === 'questions') {
+      // 剥离 listAllQuestions 附加的冗余字段，避免污染 IndexedDB
+      const { _bank_id, _bank_visibility, cloud_shared, ...rest } = r
+      row = { ...rest }
+    } else if (coll === 'settings') {
+      // settings 无 id（keyPath=key），_id 是推送用字段，回写时剥掉
+      const { _id, ...rest } = r
+      row = { ...rest }
+    } else {
+      row = { ...r }
+    }
+    if ((coll === 'quiz_banks' || coll === 'questions') && cloudId) row.cloud_id = cloudId
+    row.synced_at = now()
+    await idb.bulkPut(coll, [row])
+  } catch (e: any) {
+    console.warn(`回写 ${coll} 同步标记失败：`, e?.message || e)
+  }
+}
+
+// 拉取写入后补同步标记：wrong/mastered/favorites 按 (bank_id, question_id) 定位回写
+// （云端拉下来的数据视为已同步，避免下次推送又推回去；全表扫量级小，可接受）
+async function stampSyncedByKey(coll: 'wrong_questions' | 'mastered_questions' | 'favorites', bankId: number, questionId: number): Promise<void> {
+  try {
+    const rows = await idb.listAll(coll)
+    const rec = rows.find(x => x.bank_id === bankId && x.question_id === questionId)
+    if (rec) await idb.bulkPut(coll, [{ ...rec, synced_at: now() }])
+  } catch (e: any) {
+    console.warn(`补写 ${coll} 同步标记失败：`, e?.message || e)
   }
 }
 
@@ -457,10 +500,11 @@ async function writeLocal(coll: CloudCollection, doc: any): Promise<void> {
               cloud_id: doc._id ?? null,
               created_at: doc.created_at,
               updated_at: doc.updated_at,
+              synced_at: now(), // 2026-08-21：云端拉取视为已同步
             })
             break
           }
-          await idb.updateBank?.({ ...doc, id: localId, cloud_id: doc._id ?? exists.cloud_id, visibility: doc.visibility || 'public', cloud_shared: true })
+          await idb.updateBank?.({ ...doc, id: localId, cloud_id: doc._id ?? exists.cloud_id, visibility: doc.visibility || 'public', cloud_shared: true, synced_at: now() })
         } else {
           await idb.createBank({
             id: localId,
@@ -471,6 +515,7 @@ async function writeLocal(coll: CloudCollection, doc: any): Promise<void> {
             cloud_id: doc._id ?? null, // 云端 _id，供题目 bank_ref 关联
             created_at: doc.created_at,
             updated_at: doc.updated_at,
+            synced_at: now(), // 2026-08-21：云端拉取视为已同步
           })
         }
       } else if (doc._id && !byCloudId) {
@@ -485,6 +530,7 @@ async function writeLocal(coll: CloudCollection, doc: any): Promise<void> {
           cloud_id: doc._id,
           created_at: doc.created_at,
           updated_at: doc.updated_at,
+          synced_at: now(), // 2026-08-21：云端拉取视为已同步
         })
       }
       break
@@ -511,11 +557,11 @@ async function writeLocal(coll: CloudCollection, doc: any): Promise<void> {
         if (localQ) {
           // 已同步过：保留本地 id，按最新内容更新
           const { _id, _local_id, ...rest } = q
-          await idb.updateQuestion({ ...localQ, ...rest, id: localQ.id, bank_id: bankId, cloud_id: cloudId ?? localQ.cloud_id })
+          await idb.updateQuestion({ ...localQ, ...rest, id: localQ.id, bank_id: bankId, cloud_id: cloudId ?? localQ.cloud_id, synced_at: now() })
         } else {
           // 首次拉取：剥离云端 id/_local_id，add 让 IndexedDB 分配新 id（避免覆盖其他题库）
           const { _id, _local_id, id, ...rest } = q
-          await idb.addQuestions(bankId, [{ ...rest, cloud_id: cloudId }])
+          await idb.addQuestions(bankId, [{ ...rest, cloud_id: cloudId, synced_at: now() }])
         }
       }
       break
@@ -532,21 +578,33 @@ async function writeLocal(coll: CloudCollection, doc: any): Promise<void> {
           // 2026-08-16 修复：本地记录无 updated_at → 合并比较永远"云端较新" → 每次同步重复 add 同一条记录，
           // 导致 correct（按次数统计）翻倍、首页正确率爆表（如 200%）。写前按 (bank_id, question_id, practiced_at) 去重。
           const dup = await idb.findPracticeRecord?.(bankId, r.question_id, r.practiced_at) ?? false
-          if (!dup) await idb.recordPractice(r)
+          if (!dup) {
+            // 2026-08-21：拉取写入带 synced_at（视为已同步，避免下次推送又推回去）
+            const newId = await idb.recordPractice(r)
+            if (newId != null) await idb.bulkPut('practice_records', [{ ...r, id: newId, synced_at: now() }])
+          }
         }
         else if (coll === 'wrong_questions') {
           // 2026-08-19：保留云端 correct_streak（连续答对计数）；云端旧记录无该字段时保留本地计数
           await idb.markWrong(bankId, r.question_id, typeof r.correct_streak === 'number' ? r.correct_streak : undefined)
+          await stampSyncedByKey(coll, bankId, r.question_id)
         }
-        else if (coll === 'mastered_questions') await idb.markWrongMastered(bankId, r.question_id)
-        else await idb.toggleFavoriteSafe?.(bankId, r.question_id)
+        else if (coll === 'mastered_questions') {
+          await idb.markWrongMastered(bankId, r.question_id)
+          await stampSyncedByKey(coll, bankId, r.question_id)
+        }
+        else {
+          await idb.toggleFavoriteSafe?.(bankId, r.question_id)
+          await stampSyncedByKey(coll, bankId, r.question_id)
+        }
       }
       break
     }
     case 'settings': {
       // 敏感设置（ai_api_key）不参与云同步，云端残留也忽略
       if (doc.key === 'ai_api_key') break
-      await idb.setSetting(doc.key, doc.value)
+      // 2026-08-21：bulkPut 带 synced_at（拉取视为已同步；settings 推送为全推，此标记仅避免重复写）
+      await idb.bulkPut('settings', [{ key: doc.key, value: doc.value, synced_at: now() }])
       break
     }
   }
@@ -590,31 +648,14 @@ async function listAllRecords(): Promise<any[]> {
   return all
 }
 async function listAllWrong(): Promise<any[]> {
-  const banks = await idb.listBanks()
-  const all: any[] = []
-  for (const b of banks) {
-    const ids = await idb.listWrong(b.id)
-    for (const qid of ids) all.push({ bank_id: b.id, question_id: qid })
-  }
-  return all
+  // 2026-08-21：返回完整记录（含 id），供 pushOne 构造稳定 _id + markSynced 回写 synced_at
+  return idb.listAll('wrong_questions')
 }
 async function listAllMastered(): Promise<any[]> {
-  const banks = await idb.listBanks()
-  const all: any[] = []
-  for (const b of banks) {
-    const ids = await idb.listMastered(b.id)
-    for (const qid of ids) all.push({ bank_id: b.id, question_id: qid })
-  }
-  return all
+  return idb.listAll('mastered_questions')
 }
 async function listAllFavorites(): Promise<any[]> {
-  const banks = await idb.listBanks()
-  const all: any[] = []
-  for (const b of banks) {
-    const ids = await idb.listFavorites(b.id)
-    for (const qid of ids) all.push({ bank_id: b.id, question_id: qid })
-  }
-  return all
+  return idb.listAll('favorites')
 }
 async function listAllSettings(): Promise<any[]> {
   // 读取已知 key（从设置页用到的）

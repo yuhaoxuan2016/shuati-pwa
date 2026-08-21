@@ -191,8 +191,9 @@ export const idb = {
     return results.slice(0, limit)
   },
   // === practice_records ===
-  async recordPractice(record: any): Promise<void> {
-    await tx('practice_records', 'readwrite', s => s.add(record))
+  // 2026-08-21：返回新记录 id（供云同步拉取后回写 synced_at 增量标记）
+  async recordPractice(record: any): Promise<number> {
+    return tx('practice_records', 'readwrite', s => s.add(record)) as unknown as number
   },
   // === wrong_questions ===
   async listWrong(bankId: number): Promise<number[]> {
@@ -248,7 +249,9 @@ export const idb = {
       req.onsuccess = () => {
         const c = req.result
         if (c && c.value.question_id === questionId) {
-          store.put({ ...c.value, correct_streak: streak })
+          // 2026-08-21：本地改动 → 清 synced_at（云同步增量标记），下次推送自动补推
+          const { synced_at, ...rest } = c.value
+          store.put({ ...rest, correct_streak: streak })
         } else if (c) c.continue()
       }
     })

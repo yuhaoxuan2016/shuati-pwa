@@ -59,7 +59,9 @@ export const api = {
     return n
   },
   async updateQuestion(q: Question): Promise<void> {
-    await idb.updateQuestion(q)
+    // 2026-08-21：本地改动 → 清 synced_at（云同步增量标记），下次推送自动补推
+    const { synced_at, ...rest } = q as any
+    await idb.updateQuestion(rest)
     scheduleCloudPush()
   },
   async searchQuestions(bankId: number, query: string, limit?: number): Promise<Question[]> {
