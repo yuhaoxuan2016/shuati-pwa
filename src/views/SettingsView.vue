@@ -86,6 +86,15 @@
       <div v-if="showUpdateLog" class="update-log">
         <h4>更新日志</h4>
         <div class="log-entry">
+          <span class="log-version">v1.2.32</span>
+          <ul>
+            <li>修复备份/恢复丢失数据：「已掌握」记录和「智能组卷历史」未包含在备份中，恢复后会丢失——现已补全</li>
+            <li>修复删除题库未清理「已掌握」记录：删除题库后 mastered_questions 表残留孤儿数据，导致错题本出现幽灵条目</li>
+            <li>修复检查更新版本号显示错误：手动检查更新提示 v1.2.29 而非实际版本</li>
+            <li>修复热力图最长连续天数在夏令时切换日可能断裂的问题</li>
+          </ul>
+        </div>
+        <div class="log-entry">
           <span class="log-version">v1.2.31</span>
           <ul>
             <li>错题本新增「自动掌握」：练习时连续答对指定次数（默认 3 次，可在设置→练习调整：关闭 / 2 / 3 / 5 次），题目自动移入「已掌握」；中途答错重新计数；错题列表显示「连对 n/阈值」进度，云同步保留计数</li>
@@ -457,7 +466,7 @@ import { ref, onMounted } from 'vue'
 import { api } from '../utils/api'
 import { toastSuccess, toastError } from '../utils/toast'
 
-const currentVersion = ref('1.2.30-web')
+const currentVersion = ref('1.2.32-web')
 const checkingUpdate = ref(false)
 const showUpdateLog = ref(false)
 
@@ -527,7 +536,7 @@ onMounted(async () => {
     console.error('获取数据库信息失败：', e)
     }
     // 读取应用版本（PWA 固定版本号）
-    currentVersion.value = '1.2.31-web'
+    currentVersion.value = '1.2.32-web'
     // 读取云同步配置
     loadCloudConfig()
     // 读取同步昵称
@@ -631,7 +640,7 @@ async function doSync() {
 async function manualCheckUpdate() {
   checkingUpdate.value = true
   try {
-    toastSuccess('网页版已是最新版本（v1.2.29-web）')
+    toastSuccess('网页版已是最新版本（v1.2.32-web）')
   } finally {
     checkingUpdate.value = false
   }

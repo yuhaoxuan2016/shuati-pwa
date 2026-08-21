@@ -90,7 +90,7 @@ export const idb = {
     // 级联删除题目、练习记录、错题、收藏
     const db = await openDB()
     await new Promise<void>((resolve, reject) => {
-      const t = db.transaction(['questions', 'practice_records', 'wrong_questions', 'favorites'], 'readwrite')
+      const t = db.transaction(['questions', 'practice_records', 'wrong_questions', 'favorites', 'mastered_questions'], 'readwrite')
       t.oncomplete = () => resolve()
       t.onerror = () => reject(t.error)
       const qs = t.objectStore('questions')
@@ -100,7 +100,7 @@ export const idb = {
         const c = req.result
         if (c) { qs.delete(c.value.id); c.continue() }
       }
-      for (const [name, storeName] of [['practice_records', 'practice_records'], ['wrong_questions', 'wrong_questions'], ['favorites', 'favorites']] as const) {
+      for (const [name, storeName] of [['practice_records', 'practice_records'], ['wrong_questions', 'wrong_questions'], ['favorites', 'favorites'], ['mastered_questions', 'mastered_questions']] as const) {
         const st = t.objectStore(storeName)
         const i = st.index('bank_id')
         const r = i.openCursor(IDBKeyRange.only(id))

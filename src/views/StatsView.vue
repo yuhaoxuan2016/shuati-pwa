@@ -240,16 +240,22 @@ async function loadHeatmap() {
   const sortedDates = records.filter(r => r.total > 0).map(r => r.date).sort()
   let maxStreak = 0
   let cur = 0
-  let prevDate: Date | null = null
+  let prevDateStr: string | null = null
   for (const ds of sortedDates) {
-    const d = new Date(ds)
-    if (prevDate && (d.getTime() - prevDate.getTime()) === 86400000) {
-      cur++
+    if (prevDateStr) {
+      const prev = new Date(prevDateStr)
+      prev.setDate(prev.getDate() + 1)
+      const expected = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}-${String(prev.getDate()).padStart(2, '0')}`
+      if (ds === expected) {
+        cur++
+      } else {
+        cur = 1
+      }
     } else {
       cur = 1
     }
     if (cur > maxStreak) maxStreak = cur
-    prevDate = d
+    prevDateStr = ds
   }
 
   heatmap.value = { weeks, months: monthLabels, totalCount, streakDays: streak, maxStreak }

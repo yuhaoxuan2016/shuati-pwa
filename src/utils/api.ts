@@ -227,6 +227,8 @@ export async function exportAll() {
     wrong_questions: await m.listAll('wrong_questions'),
     favorites: await m.listAll('favorites'),
     practice_records: await m.listAll('practice_records'),
+    mastered_questions: await m.listAll('mastered_questions'),
+    compose_records: await m.listAll('compose_records'),
     settings: await m.getAllSettings(),
   }
 }
@@ -242,6 +244,8 @@ export async function restoreBackup(data: any, onProgress?: (msg: string) => voi
     wrong_questions: 'wrong_questions',
     favorites: 'favorites',
     practice_records: 'practice_records',
+    mastered_questions: 'mastered_questions',
+    compose_records: 'compose_records',
     settings: 'settings',
   }
   const keys = Object.keys(storeMap).filter(k => Array.isArray(data[k]))
