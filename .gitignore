@@ -50,3 +50,6 @@ home-icons-shot.png
 
 # 旧 git 历史备份（含 envId，仅本地保留）
 .git.bak-envhistory/
+
+# 本地 MCP 工具配置（仅本机有效，不上传）
+config/
