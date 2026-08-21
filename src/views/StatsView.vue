@@ -106,7 +106,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
-import { api } from '../utils/api'
+import { api, toLocalDateStr, addDays } from '../utils/api'
 import { toastError } from '../utils/toast'
 
 const route = useRoute()
@@ -233,13 +233,12 @@ async function loadHeatmap() {
   for (const r of records) totalCount += r.total
   // 连续天数（从今天往回数）
   let streak = 0
-  const c2 = new Date(today)
+  let streakCursor = today
   while (true) {
-    const iso = `${c2.getFullYear()}-${String(c2.getMonth() + 1).padStart(2, '0')}-${String(c2.getDate()).padStart(2, '0')}`
-    const r = map.get(iso)
+    const r = map.get(streakCursor)
     if (r && r.total > 0) {
       streak++
-      c2.setDate(c2.getDate() - 1)
+      streakCursor = addDays(streakCursor, -1)
     } else {
       break
     }
@@ -251,9 +250,7 @@ async function loadHeatmap() {
   let prevDateStr: string | null = null
   for (const ds of sortedDates) {
     if (prevDateStr) {
-      const prev = new Date(prevDateStr)
-      prev.setDate(prev.getDate() + 1)
-      const expected = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}-${String(prev.getDate()).padStart(2, '0')}`
+      const expected = addDays(prevDateStr, 1)
       if (ds === expected) {
         cur++
       } else {

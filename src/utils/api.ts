@@ -5,6 +5,20 @@ import { idb } from '../lib/db'
 function scheduleCloudPush() {
   import('../lib/cloud').then(m => m.scheduleAutoPush()).catch(() => {})
 }
+
+// 日期工具函数：避免夏令时问题
+export function toLocalDateStr(d: Date): string {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+export function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  d.setDate(d.getDate() + days)
+  return toLocalDateStr(d)
+}
 // 删除类操作：记录云端删除标记（P1.2 修复，push 时按标记删云端旧文档）
 function markCloudDeleted(coll: 'favorites' | 'wrong_questions' | 'mastered_questions', bankId: number, questionId: number) {
   import('../lib/cloud').then(m => m.markCloudDeleted(coll, bankId, questionId)).catch(() => {})

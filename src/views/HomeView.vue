@@ -184,7 +184,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBankStore } from '../stores/bank'
-import { api } from '../utils/api'
+import { api, toLocalDateStr, addDays } from '../utils/api'
 import { listPublicBanks, listExams, listPublicBankQuestions, classifyQuestionType, judgeAnswerBool, type Exam } from '../lib/exam'
 import { toastSuccess, toastError } from '../utils/toast'
 import { recordVisit, getVisitStats } from '../lib/visit'
@@ -305,13 +305,12 @@ onMounted(async () => {
     // 连续天数：从今天往回数，每天都有记录
     let streak = 0
     const sorted = [...records].sort((a, b) => b.date.localeCompare(a.date))
-    let cursor = new Date()
+    let cursor = toLocalDateStr(new Date())
     for (const r of sorted) {
-      const iso = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`
-      if (r.date === iso && r.total > 0) {
+      if (r.date === cursor && r.total > 0) {
         streak++
-        cursor.setDate(cursor.getDate() - 1)
-      } else if (r.date < iso) {
+        cursor = addDays(cursor, -1)
+      } else if (r.date < cursor) {
         break
       }
     }

@@ -258,8 +258,12 @@ function buildDisplayMap() {
   const n = q?.options ? safeParseOptions(q.options).length : 0
   const idx = Array.from({ length: n }, (_, i) => i)
   if (shuffleOptions.value && n > 2 && !isJudgeQuestion()) {
+    // 使用确定性种子确保同一题目乱序结果一致
+    const seed = q?.id || 0
+    let hash = seed
     for (let i = n - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
+      hash = (hash * 9301 + 49297) % 233280
+      const j = Math.floor((hash / 233280) * (i + 1))
       ;[idx[i], idx[j]] = [idx[j], idx[i]]
     }
     if (idx.every((v, i) => v === i) && n > 1) {

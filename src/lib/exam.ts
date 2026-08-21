@@ -12,7 +12,11 @@ export function errMsg(e: any): string {
   if (e == null) return '未知错误'
   if (e instanceof Error) return e.message
   if (typeof e === 'object') {
-    return (e as any).message || (e as any).errMsg || (e as any).error || JSON.stringify(e)
+    try {
+      return (e as any).message || (e as any).errMsg || (e as any).error || JSON.stringify(e)
+    } catch {
+      return String(e)
+    }
   }
   return String(e)
 }

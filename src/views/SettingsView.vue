@@ -654,7 +654,7 @@ async function doSync() {
 async function manualCheckUpdate() {
   checkingUpdate.value = true
   try {
-    toastSuccess('网页版已是最新版本（v1.2.32-web）')
+    toastSuccess('网页版已是最新版本（v' + currentVersion.value + '）')
   } finally {
     checkingUpdate.value = false
   }

@@ -88,7 +88,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, Question } from '../utils/api'
-import { toastError, toastSuccess } from '../utils/toast'
+import { toastError, toastSuccess, toastInfo } from '../utils/toast'
 import QuestionCard from '../components/QuestionCard.vue'
 
 const route = useRoute()

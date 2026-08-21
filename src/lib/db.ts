@@ -69,10 +69,10 @@ function tx<T>(storeName: string, mode: IDBTransactionMode, fn: (store: IDBObjec
     const t = db.transaction(storeName, mode)
     const store = t.objectStore(storeName)
     const req = fn(store)
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
+    // 只依赖事务完成事件，确保数据已持久化
     t.oncomplete = () => resolve(req.result)
     t.onerror = () => reject(t.error)
+    t.onabort = () => reject(t.error)
   }))
 }
 
