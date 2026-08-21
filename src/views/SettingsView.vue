@@ -86,8 +86,14 @@
       <div v-if="showUpdateLog" class="update-log">
         <h4>更新日志</h4>
         <div class="log-entry">
-          <span class="log-version">v1.2.23</span>
+          <span class="log-version">v1.2.33</span>
           <ul>
+            <li>云同步提速（并发推送 + 增量同步）：本地几千题时同步从十几分钟降到秒级；断网推送不再「假成功」，会明确提示失败条数</li>
+            <li>修复统计页正确率超 100%、答错数为负的问题（同一题多次答对时显示异常）</li>
+            <li>修复首页进出时监听器泄漏（每次进出首页累积 document 监听器）</li>
+            <li>修复公共题库重复导入：已导入的题库不再显示「添加」按钮，二次拦截防同名副本</li>
+            <li>修复设置云同步无限膨胀：每次手动同步新增 5 条重复设置文档的问题，改为稳定身份更新</li>
+            <li>修复热力图数据异常时整块不显示：解析失败降级为空热力图</li>
             <li>修复 ExamTakeView 查询码错误处理：区分网络异常、考试不存在、超时等不同情况，提供更详细的错误提示</li>
             <li>修复 WrongView 练习退出反馈：题目数据异常或已删除时，添加 toast 提示</li>
             <li>修复 QuestionCard 选项乱序稳定性：使用固定种子确保同一题目乱序结果一致</li>
@@ -474,7 +480,7 @@ import { ref, onMounted } from 'vue'
 import { api } from '../utils/api'
 import { toastSuccess, toastError } from '../utils/toast'
 
-const currentVersion = ref('1.2.23-web')
+const currentVersion = ref('1.2.33-web')
 const checkingUpdate = ref(false)
 const showUpdateLog = ref(false)
 
@@ -544,7 +550,7 @@ onMounted(async () => {
     console.error('获取数据库信息失败：', e)
     }
     // 读取应用版本（PWA 固定版本号）
-    currentVersion.value = '1.2.23-web'
+    currentVersion.value = '1.2.33-web'
     // 读取云同步配置
     loadCloudConfig()
     // 读取同步昵称
