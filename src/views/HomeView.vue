@@ -87,7 +87,7 @@
           <div class="actions">
             <button class="primary-btn" @click="$router.push(`/public-practice/${b._id}/${encodeURIComponent(b.name)}`)">开始刷题</button>
             <div v-if="isImported(b.name)" class="imported-tag">✓ 已添加到我的题库</div>
-            <button class="import-btn" :disabled="importingId === b._id" @click="importPublicBank(b)">
+            <button v-else class="import-btn" :disabled="importingId === b._id" @click="importPublicBank(b)">
               <span v-if="importingId === b._id">导入中… {{ importProgress?.done }}/{{ importProgress?.total }}</span>
               <span v-else>＋ 添加到我的题库</span>
             </button>
@@ -261,17 +261,21 @@ function todayISO(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// 2026-08-21 修复：此前在 onMounted 里注册匿名函数、onBeforeUnmount 里移除 closeMenu，
+// removeEventListener 永远匹配不上 → 每次进出首页泄漏监听器。提升到 setup 顶层，注册/移除用同一函数。
+// 手机端 click 事件可能不冒泡到 document（尤其微信内置浏览器），加 touchstart 兼容
+// 2026-08-16 修复：touchstart 无差别 closeMenu 会在手机端吞掉菜单按钮的 click——
+// touchstart 先冒泡关菜单 → v-if 卸载菜单 DOM → 按钮 click 不再触发 → 删除/导出/跳转全没反应。
+// 现在点击目标在菜单 / ⋮ 按钮内部时不关闭。
+const inMenu = (e: Event): boolean => {
+  const t = e.target as HTMLElement | null
+  return !!t && !!t.closest && !!t.closest('.dropdown-menu, .more-btn')
+}
+const onDocClick = (e: Event) => { if (!inMenu(e)) closeMenu() }
+
 onMounted(async () => {
-  // 手机端 click 事件可能不冒泡到 document（尤其微信内置浏览器），加 touchstart 兼容
-  // 2026-08-16 修复：touchstart 无差别 closeMenu 会在手机端吞掉菜单按钮的 click——
-  // touchstart 先冒泡关菜单 → v-if 卸载菜单 DOM → 按钮 click 不再触发 → 删除/导出/跳转全没反应。
-  // 现在点击目标在菜单 / ⋮ 按钮内部时不关闭。
-  const inMenu = (e: Event): boolean => {
-    const t = e.target as HTMLElement | null
-    return !!t && !!t.closest && !!t.closest('.dropdown-menu, .more-btn')
-  }
-  document.addEventListener('click', (e) => { if (!inMenu(e)) closeMenu() })
-  document.addEventListener('touchstart', (e) => { if (!inMenu(e)) closeMenu() }, { passive: true })
+  document.addEventListener('click', onDocClick)
+  document.addEventListener('touchstart', onDocClick, { passive: true })
   // 并行加载：本地题库 + 云端公共数据（公共部分失败不影响本地使用）
   await Promise.allSettled([
     loadPublicData(),
@@ -363,6 +367,11 @@ function resumePractice() {
 // 将云端公共题库完整导入到本地「我的题库」，导入后自动获得进度/收藏/错题功能
 async function importPublicBank(b: any) {
   if (importingId.value) return
+  // 2026-08-21：按钮已 v-else 隐藏，这里再拦一道防止异常路径重复导入建副本
+  if (isImported(b.name)) {
+    toastError(`「${b.name}」已在你的题库中，无需重复导入`)
+    return
+  }
   const total = b.question_count || 0
   if (!confirm(`将「${b.name}」导入到我的题库？\n共 ${total} 题，导入后可享进度 / 收藏 / 错题功能。`)) return
   importingId.value = b._id
@@ -473,7 +482,7 @@ async function exportBank(b: { id: number; name: string }) {
   }
 }
 
-onBeforeUnmount(() => { document.removeEventListener('click', closeMenu); document.removeEventListener('touchstart', closeMenu) })
+onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); document.removeEventListener('touchstart', onDocClick) })
 </script>
 
 <style scoped>

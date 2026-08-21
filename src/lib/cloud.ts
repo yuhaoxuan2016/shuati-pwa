@@ -211,15 +211,22 @@ function withTimeout<T>(p: Promise<T>, ms = 20000, label = '同步请求'): Prom
 //   规则改为 write: auth != null 后 update 生效（实测）
 // - add 带 _id：首次创建 ✓，重复静默忽略（不更新）
 // → 双写：先 add（保证首次创建），再 update 不带 _id（保证最新内容覆盖）
+// 2026-08-21 修复：此前 .catch(() => {}) 吞掉所有错误（含网络错误/超时），网络断时同步显示成功但实际 0 写入（假成功）。
+// 现在按错误类型区分：重复 _id（add）/ 文档不存在（update）属正常路径静默；其余错误（网络、权限）上抛，
+// 由 pushToCloud 捕获并提示「推送失败」，用户可感知。
+function isIgnorableSyncError(e: any): boolean {
+  const msg = String(e?.message || e)
+  return /duplicate|already\s*exists|已存在|not\s*exist|不存在/i.test(msg)
+}
 async function pushDoc(collection: CloudCollection, doc: any): Promise<string | null> {
   if (!isAuthed()) return null
   const coll = db.collection(collection)
   const id = doc._id || doc.cloud_id
   try {
     if (id) {
-      await withTimeout(coll.add({ ...doc, _id: id, updated_at: now() }).catch(() => { /* 重复 _id 静默忽略 */ }), 20000, '推送')
+      await withTimeout(coll.add({ ...doc, _id: id, updated_at: now() }).catch((e: any) => { if (!isIgnorableSyncError(e)) throw e }), 20000, '推送')
       const { _id, ...upd } = doc // _id 为系统字段，update 时剥掉
-      await withTimeout(coll.doc(id).update({ ...upd, updated_at: now() }).catch(() => { /* 不存在时 update 假成功，由 add 兜底 */ }), 20000, '更新')
+      await withTimeout(coll.doc(id).update({ ...upd, updated_at: now() }).catch((e: any) => { if (!isIgnorableSyncError(e)) throw e }), 20000, '更新')
       return String(id)
     } else {
       const res = await withTimeout(coll.add({ ...doc, updated_at: now() }), 20000, '新增')
@@ -612,11 +619,13 @@ async function listAllFavorites(): Promise<any[]> {
 async function listAllSettings(): Promise<any[]> {
   // 读取已知 key（从设置页用到的）
   // 注意：ai_api_key（AI 密钥）不参与云同步，仅保存在本地浏览器，避免泄露到云端
+  // 2026-08-21 修复：此前无 _id → pushDoc 走 add 不带 _id 分支 → 每次手动同步都新增 5 条重复文档，
+  // settings 集合无限膨胀。现在带稳定 _id（uid 前缀 + key），pushDoc 双写变成 upsert 语义。
   const keys = ['ai_base_url', 'ai_model', 'daily_records', 'last_practice', 'practice_progress']
   const out: any[] = []
   for (const k of keys) {
     const v = await idb.getSetting(k)
-    if (v != null) out.push({ key: k, value: v })
+    if (v != null) out.push({ _id: 'lsettings_' + uidPrefix() + '_' + k, key: k, value: v })
   }
   return out
 }

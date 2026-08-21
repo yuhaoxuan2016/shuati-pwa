@@ -114,9 +114,11 @@ const bankId = Number(route.params.bankId)
 const stats = ref({ total: 0, practiced: 0, correct: 0 })
 const loaded = ref(false)
 
-const accuracy = computed(() => stats.value.practiced ? Math.round(stats.value.correct / stats.value.practiced * 100) : 0)
+// 2026-08-21 修复：correct 按「答对次数」统计（同题多次答对都计），可大于 practiced（题目数）——
+// 正确率必须钳制到 100，否则显示 120% 这类异常值；答错数同理钳制到 0，避免负数
+const accuracy = computed(() => stats.value.practiced ? Math.min(100, Math.round(stats.value.correct / stats.value.practiced * 100)) : 0)
 const correct = computed(() => stats.value.correct)
-const wrong = computed(() => stats.value.practiced - stats.value.correct)
+const wrong = computed(() => Math.max(0, stats.value.practiced - stats.value.correct))
 const remaining = computed(() => Math.max(0, stats.value.total - stats.value.practiced))
 const progressPct = computed(() => stats.value.total ? Math.round(stats.value.practiced / stats.value.total * 100) : 0)
 
@@ -148,7 +150,13 @@ const heatmap = ref<HeatmapData>({ weeks: [], months: [], totalCount: 0, streakD
 
 async function loadHeatmap() {
   const raw = await api.getSetting('daily_records')
-  const records: { date: string; total: number; correct: number }[] = raw ? JSON.parse(raw) : []
+  let records: { date: string; total: number; correct: number }[] = []
+  try {
+    records = raw ? JSON.parse(raw) : []
+  } catch (e) {
+    // 2026-08-21：daily_records 损坏时降级为空热力图，不阻塞页面
+    console.error('daily_records 解析失败，已降级为空热力图：', e)
+  }
   const map = new Map(records.map(r => [r.date, r]))
 
   // 计算 365 天范围：从今天往回数 52 周 + 今天的星期
