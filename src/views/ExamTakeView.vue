@@ -466,16 +466,31 @@ async function lookupByCode() {
     }
     // 获取考试题目（优先用内存中的，否则重新拉取）
     let examData = finishedExam.value
-    if (!examData) examData = await getExam(examId)
     if (!examData) {
-      codeError.value = '考试数据加载失败，请稍后重试'
+      try {
+        examData = await getExam(examId)
+      } catch (examErr) {
+        console.error('加载考试数据失败：', examErr)
+        codeError.value = '网络异常，无法加载考试数据，请检查网络后重试'
+        return
+      }
+    }
+    if (!examData) {
+      codeError.value = '考试不存在或已被删除，请联系考试创建者'
       return
     }
     reviewResult.value = found
     reviewWrongs.value = getWrongQuestions(examData, found)
     showReview.value = true
   } catch (e) {
-    codeError.value = '查询失败：' + errMsg(e)
+    const msg = errMsg(e)
+    if (msg.includes('timeout') || msg.includes('超时')) {
+      codeError.value = '查询超时，请稍后重试'
+    } else if (msg.includes('network') || msg.includes('网络')) {
+      codeError.value = '网络异常，请检查网络连接'
+    } else {
+      codeError.value = '查询失败：' + msg
+    }
   } finally {
     reviewLoading.value = false
   }

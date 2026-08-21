@@ -188,6 +188,7 @@ function loadCurrent() {
   }
   current.value = null
   practicing.value = false
+  toastInfo('题目数据异常或已删除，已退出练习模式')
 }
 
 async function next() {

@@ -209,14 +209,18 @@ function isJudgeQuestion(): boolean {
   return false
 }
 
-// 选项乱序映射：组件挂载时一次性固定，避免做题中途开关切换导致下标错位。
+// 选项乱序映射：使用computed确保question属性变化时自动更新
 // displayMap[displayIdx] = 原始下标；乱序关闭时即恒等映射 [0,1,2,...]。
-const displayMap = (() => {
+const displayMap = computed<number[]>(() => {
   const n = rawOptions.value.length
   const idx = Array.from({ length: n }, (_, i) => i)
   if (props.shuffleOptions && n > 2 && !isJudgeQuestion()) {
+    // 使用固定种子确保同一题目乱序结果一致
+    const seed = props.question.id || 0
+    let hash = seed
     for (let i = n - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
+      hash = (hash * 9301 + 49297) % 233280
+      const j = Math.floor((hash / 233280) * (i + 1))
       ;[idx[i], idx[j]] = [idx[j], idx[i]]
     }
     // 保证至少一个选项位置变化（避免偶发"恰好没乱"）
@@ -225,10 +229,10 @@ const displayMap = (() => {
     }
   }
   return idx
-})()
-const options = computed<string[]>(() => displayMap.map(i => rawOptions.value[i]))
+})
+const options = computed<string[]>(() => displayMap.value.map(i => rawOptions.value[i]))
 // saved.selected 是原始下标 → 转成展示下标
-const selected = ref<number[]>(saved?.selected ? saved.selected.map(raw => displayMap.indexOf(raw)).filter(i => i >= 0) : [])
+const selected = ref<number[]>(saved?.selected ? saved.selected.map(raw => displayMap.value.indexOf(raw)).filter(i => i >= 0) : [])
 const blankAnswer = ref(saved?.blankAnswer ?? '')
 const submitted = ref(saved?.submitted ?? false)
 const isCorrect = ref(saved?.isCorrect ?? false)
@@ -405,12 +409,12 @@ function parseAnswerLetters(): number[] {
 function correctDisplayIndices(): number[] {
   const rawCorrect = parseAnswerLetters()
   if (!props.shuffleOptions) return rawCorrect
-  return rawCorrect.map(raw => displayMap.indexOf(raw)).filter(i => i >= 0)
+  return rawCorrect.map(raw => displayMap.value.indexOf(raw)).filter(i => i >= 0)
 }
 // 展示下标 → 原始下标（存档/上报时用原始下标，兼容旧数据）
 function toRawIndex(displayIdx: number): number {
   if (!props.shuffleOptions) return displayIdx
-  return displayMap[displayIdx] ?? displayIdx
+  return displayMap.value[displayIdx] ?? displayIdx
 }
 function getDurationMs(): number | null {
   if (elapsedSecs.value === null) return null
