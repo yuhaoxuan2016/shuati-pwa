@@ -117,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, Question } from '../utils/api'
 import { toastError, toastSuccess, toastInfo } from '../utils/toast'
