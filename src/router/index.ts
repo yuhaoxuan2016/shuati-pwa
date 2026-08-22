@@ -16,6 +16,7 @@ const routes = [
   { path: '/exam/:examId', name: 'exam-take', component: () => import('../views/ExamTakeView.vue') },
   { path: '/exam/:examId/results', name: 'exam-results', component: () => import('../views/ExamResultsView.vue') },
   { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue') },
+  { path: '/study-plan', name: 'study-plan', component: () => import('../views/StudyPlanView.vue') },
   // 404 兜底：未知路径回首页（2026-08-15 修复）
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]

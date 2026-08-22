@@ -78,6 +78,56 @@
         </div>
       </div>
 
+      <!-- 错题统计图表 -->
+      <div class="wrong-chart-section">
+        <h3>错题分析</h3>
+        <div class="wrong-chart-container">
+          <div class="wrong-chart">
+            <canvas ref="wrongChartRef" width="400" height="200"></canvas>
+          </div>
+          <div class="wrong-summary">
+            <div class="wrong-stat">
+              <span class="wrong-label">总错题</span>
+              <span class="wrong-value">{{ wrongStats.total }}</span>
+            </div>
+            <div class="wrong-stat">
+              <span class="wrong-label">已掌握</span>
+              <span class="wrong-value success">{{ wrongStats.mastered }}</span>
+            </div>
+            <div class="wrong-stat">
+              <span class="wrong-label">待强化</span>
+              <span class="wrong-value warning">{{ wrongStats.pending }}</span>
+            </div>
+            <div class="wrong-stat">
+              <span class="wrong-label">掌握率</span>
+              <span class="wrong-value">{{ wrongStats.masteryRate }}%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 学习趋势图表 -->
+      <div class="trend-section">
+        <h3>学习趋势（最近30天）</h3>
+        <div class="trend-chart-container">
+          <canvas ref="trendChartRef" width="600" height="250"></canvas>
+        </div>
+        <div class="trend-summary">
+          <div class="trend-stat">
+            <span class="trend-label">日均刷题</span>
+            <span class="trend-value">{{ dailyAverage }}</span>
+          </div>
+          <div class="trend-stat">
+            <span class="trend-label">最高单日</span>
+            <span class="trend-value">{{ maxDaily }}</span>
+          </div>
+          <div class="trend-stat">
+            <span class="trend-label">学习天数</span>
+            <span class="trend-value">{{ studyDays }}</span>
+          </div>
+        </div>
+      </div>
+
       <!-- 学习建议 -->
       <div class="tips">
         <h3>学习建议</h3>
@@ -113,6 +163,12 @@ const route = useRoute()
 const bankId = Number(route.params.bankId)
 const stats = ref({ total: 0, practiced: 0, correct: 0 })
 const loaded = ref(false)
+const wrongChartRef = ref<HTMLCanvasElement | null>(null)
+const wrongStats = ref({ total: 0, mastered: 0, pending: 0, masteryRate: 0 })
+const trendChartRef = ref<HTMLCanvasElement | null>(null)
+const dailyAverage = ref(0)
+const maxDaily = ref(0)
+const studyDays = ref(0)
 
 // 2026-08-21 修复：correct 按「答对次数」统计（同题多次答对都计），可大于 practiced（题目数）——
 // 正确率必须钳制到 100，否则显示 120% 这类异常值；答错数同理钳制到 0，避免负数
@@ -122,6 +178,212 @@ const wrong = computed(() => Math.max(0, stats.value.practiced - stats.value.cor
 const remaining = computed(() => Math.max(0, stats.value.total - stats.value.practiced))
 const progressPct = computed(() => stats.value.total ? Math.round(stats.value.practiced / stats.value.total * 100) : 0)
 
+// 加载错题统计
+async function loadWrongStats() {
+  try {
+    const [wrongRecords, mastered] = await Promise.all([
+      api.listWrongRecords(bankId),
+      api.listMastered(bankId)
+    ])
+    
+    const total = wrongRecords.length + mastered.length
+    const masteredCount = mastered.length
+    const pending = wrongRecords.length
+    
+    wrongStats.value = {
+      total,
+      mastered: masteredCount,
+      pending,
+      masteryRate: total > 0 ? Math.round((masteredCount / total) * 100) : 0
+    }
+    
+    // 绘制错题图表
+    drawWrongChart()
+  } catch (e) {
+    console.error('加载错题统计失败：', e)
+  }
+}
+
+// 绘制错题图表
+function drawWrongChart() {
+  const canvas = wrongChartRef.value
+  if (!canvas) return
+  
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  
+  // 清空画布
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  
+  // 绘制饼图
+  const centerX = canvas.width / 2
+  const centerY = canvas.height / 2
+  const radius = 80
+  
+  const total = wrongStats.value.total
+  if (total === 0) return
+  
+  const masteredAngle = (wrongStats.value.mastered / total) * 2 * Math.PI
+  const pendingAngle = (wrongStats.value.pending / total) * 2 * Math.PI
+  
+  // 绘制已掌握部分（绿色）
+  ctx.beginPath()
+  ctx.moveTo(centerX, centerY)
+  ctx.arc(centerX, centerY, radius, 0, masteredAngle)
+  ctx.fillStyle = '#10B981'
+  ctx.fill()
+  
+  // 绘制待强化部分（橙色）
+  ctx.beginPath()
+  ctx.moveTo(centerX, centerY)
+  ctx.arc(centerX, centerY, radius, masteredAngle, masteredAngle + pendingAngle)
+  ctx.fillStyle = '#F59E0B'
+  ctx.fill()
+  
+  // 绘制中心白色圆（环形图效果）
+  ctx.beginPath()
+  ctx.arc(centerX, centerY, radius * 0.6, 0, 2 * Math.PI)
+  ctx.fillStyle = '#ffffff'
+  ctx.fill()
+  
+  // 绘制中心文字
+  ctx.fillStyle = '#374151'
+  ctx.font = 'bold 24px sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(`${wrongStats.value.masteryRate}%`, centerX, centerY - 10)
+  ctx.font = '12px sans-serif'
+  ctx.fillStyle = '#6B7280'
+  ctx.fillText('掌握率', centerX, centerY + 15)
+}
+
+// 加载学习趋势数据
+async function loadTrendData() {
+  try {
+    const raw = await api.getSetting('daily_records')
+    if (!raw) return
+    
+    const records = JSON.parse(raw) as { date: string; total: number; correct: number }[]
+    const last30Days = records.slice(-30)
+    
+    if (last30Days.length === 0) return
+    
+    // 计算统计数据
+    const totalQuestions = last30Days.reduce((sum, r) => sum + r.total, 0)
+    dailyAverage.value = Math.round(totalQuestions / last30Days.length)
+    maxDaily.value = Math.max(...last30Days.map(r => r.total))
+    studyDays.value = last30Days.filter(r => r.total > 0).length
+    
+    // 绘制趋势图
+    drawTrendChart(last30Days)
+  } catch (e) {
+    console.error('加载学习趋势失败：', e)
+  }
+}
+
+// 绘制趋势图
+function drawTrendChart(records: { date: string; total: number; correct: number }[]) {
+  const canvas = trendChartRef.value
+  if (!canvas) return
+  
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  
+  // 清空画布
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  
+  const padding = { top: 20, right: 20, bottom: 40, left: 50 }
+  const chartWidth = canvas.width - padding.left - padding.right
+  const chartHeight = canvas.height - padding.top - padding.bottom
+  
+  if (records.length === 0) return
+  
+  // 找到最大值
+  const maxValue = Math.max(...records.map(r => r.total), 1)
+  
+  // 绘制网格线
+  ctx.strokeStyle = '#E5E7EB'
+  ctx.lineWidth = 1
+  for (let i = 0; i <= 5; i++) {
+    const y = padding.top + (chartHeight / 5) * i
+    ctx.beginPath()
+    ctx.moveTo(padding.left, y)
+    ctx.lineTo(canvas.width - padding.right, y)
+    ctx.stroke()
+  }
+  
+  // 绘制Y轴标签
+  ctx.fillStyle = '#6B7280'
+  ctx.font = '12px sans-serif'
+  ctx.textAlign = 'right'
+  for (let i = 0; i <= 5; i++) {
+    const value = Math.round((maxValue / 5) * (5 - i))
+    const y = padding.top + (chartHeight / 5) * i
+    ctx.fillText(value.toString(), padding.left - 10, y + 4)
+  }
+  
+  // 绘制X轴标签（每隔几天显示一个）
+  ctx.textAlign = 'center'
+  const step = Math.max(1, Math.floor(records.length / 7))
+  for (let i = 0; i < records.length; i += step) {
+    const x = padding.left + (chartWidth / (records.length - 1)) * i
+    const date = records[i].date.slice(5) // 只显示月-日
+    ctx.fillText(date, x, canvas.height - 10)
+  }
+  
+  // 绘制折线
+  ctx.strokeStyle = '#3B82F6'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  
+  for (let i = 0; i < records.length; i++) {
+    const x = padding.left + (chartWidth / (records.length - 1)) * i
+    const y = padding.top + chartHeight - (records[i].total / maxValue) * chartHeight
+    
+    if (i === 0) {
+      ctx.moveTo(x, y)
+    } else {
+      ctx.lineTo(x, y)
+    }
+  }
+  ctx.stroke()
+  
+  // 绘制数据点
+  ctx.fillStyle = '#3B82F6'
+  for (let i = 0; i < records.length; i++) {
+    const x = padding.left + (chartWidth / (records.length - 1)) * i
+    const y = padding.top + chartHeight - (records[i].total / maxValue) * chartHeight
+    
+    ctx.beginPath()
+    ctx.arc(x, y, 4, 0, 2 * Math.PI)
+    ctx.fill()
+  }
+  
+  // 绘制正确率折线（如果有的话）
+  if (records.some(r => r.correct > 0)) {
+    ctx.strokeStyle = '#10B981'
+    ctx.lineWidth = 2
+    ctx.setLineDash([5, 5])
+    ctx.beginPath()
+    
+    for (let i = 0; i < records.length; i++) {
+      if (records[i].total === 0) continue
+      
+      const x = padding.left + (chartWidth / (records.length - 1)) * i
+      const accuracy = records[i].correct / records[i].total
+      const y = padding.top + chartHeight - accuracy * chartHeight
+      
+      if (i === 0 || records[i - 1].total === 0) {
+        ctx.moveTo(x, y)
+      } else {
+        ctx.lineTo(x, y)
+      }
+    }
+    ctx.stroke()
+    ctx.setLineDash([])
+  }
+}
+
 onMounted(async () => {
   try {
     stats.value = await api.bankStats(bankId)
@@ -130,6 +392,8 @@ onMounted(async () => {
   }
   try {
     await loadHeatmap()
+    await loadWrongStats()
+    await loadTrendData()
   } catch (e) {
     console.error('加载热力图失败：', e)
   } finally {
@@ -283,6 +547,29 @@ async function loadHeatmap() {
 .progress-bar { width: 100%; height: 12px; background: var(--color-border-light); border-radius: 6px; overflow: hidden; }
 .progress-fill { height: 100%; background: var(--color-primary); border-radius: 6px; transition: width 0.3s; }
 .progress-text { margin: 8px 0 0; font-size: 13px; color: var(--color-text-secondary); }
+
+/* 错题统计图表 */
+.wrong-chart-section { background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); padding: 16px 20px; margin-bottom: 16px; }
+.wrong-chart-section h3 { margin: 0 0 12px 0; font-size: 15px; }
+.wrong-chart-container { display: flex; align-items: center; gap: 24px; }
+.wrong-chart { flex-shrink: 0; }
+.wrong-chart canvas { display: block; }
+.wrong-summary { display: flex; flex-direction: column; gap: 12px; }
+.wrong-stat { display: flex; justify-content: space-between; align-items: center; min-width: 120px; }
+.wrong-label { font-size: 14px; color: var(--color-text-secondary); }
+.wrong-value { font-size: 18px; font-weight: 600; color: var(--color-text); }
+.wrong-value.success { color: #10B981; }
+.wrong-value.warning { color: #F59E0B; }
+
+/* 学习趋势图表 */
+.trend-section { background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); padding: 16px 20px; margin-bottom: 16px; }
+.trend-section h3 { margin: 0 0 12px 0; font-size: 15px; }
+.trend-chart-container { margin-bottom: 16px; }
+.trend-chart-container canvas { display: block; width: 100%; height: auto; }
+.trend-summary { display: flex; justify-content: space-around; }
+.trend-stat { display: flex; flex-direction: column; align-items: center; }
+.trend-label { font-size: 12px; color: var(--color-text-secondary); }
+.trend-value { font-size: 20px; font-weight: 600; color: var(--color-primary); }
 
 /* 热力图 */
 .heatmap-section { background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); padding: 16px 20px; margin-bottom: 16px; }

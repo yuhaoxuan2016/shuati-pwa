@@ -8,8 +8,40 @@
     </div>
 
     <div v-if="tab === 'pending'">
+      <!-- 错题分类筛选 -->
+      <div class="wrong-filter">
+        <div class="filter-label">按题型筛选：</div>
+        <div class="filter-tags">
+          <button 
+            v-for="type in questionTypes" 
+            :key="type.value"
+            :class="{ active: selectedType === type.value }"
+            @click="selectedType = type.value"
+          >
+            {{ type.label }} ({{ type.count }})
+          </button>
+        </div>
+      </div>
+
+      <!-- 错题统计 -->
+      <div class="wrong-stats">
+        <div class="stat-item">
+          <span class="stat-value">{{ filteredWrongIds.length }}</span>
+          <span class="stat-label">错题数</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">{{ masteredIds.length }}</span>
+          <span class="stat-label">已掌握</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">{{ masteryRate }}%</span>
+          <span class="stat-label">掌握率</span>
+        </div>
+      </div>
+
       <div class="actions-bar">
-        <button v-if="wrongIds.length && !practicing" @click="start">错题重练</button>
+        <button v-if="filteredWrongIds.length && !practicing" @click="start">错题重练</button>
+        <button v-if="filteredWrongIds.length && !practicing" @click="startIntensive" class="intensive-btn">强化练习</button>
         <button v-if="practicing" @click="exitPractice">退出重练</button>
       </div>
 
@@ -105,6 +137,59 @@ const idx = ref(0)
 const current = ref<Question | null>(null)
 const tab = ref<'pending' | 'mastered'>('pending')
 const practiceMode = ref<'pending' | 'mastered'>('pending')  // 当前练习队列来源：待重练 / 已掌握重练
+const selectedType = ref<string>('all')  // 选中的题型筛选
+
+// 计算题型分类
+const questionTypes = computed(() => {
+  const types: { value: string; label: string; count: number }[] = [
+    { value: 'all', label: '全部', count: wrongIds.value.length }
+  ]
+  
+  const typeMap = new Map<string, number>()
+  for (const id of wrongIds.value) {
+    const q = allQuestions.value.find(q => q.id === id)
+    if (q) {
+      const type = q.type || 'unknown'
+      typeMap.set(type, (typeMap.get(type) || 0) + 1)
+    }
+  }
+  
+  const typeLabels: Record<string, string> = {
+    'single': '单选题',
+    'multi': '多选题',
+    'judge': '判断题',
+    'blank': '填空题',
+    'qa': '问答题',
+    'unknown': '其他'
+  }
+  
+  for (const [type, count] of typeMap) {
+    types.push({
+      value: type,
+      label: typeLabels[type] || type,
+      count
+    })
+  }
+  
+  return types
+})
+
+// 筛选后的错题ID
+const filteredWrongIds = computed(() => {
+  if (selectedType.value === 'all') {
+    return wrongIds.value
+  }
+  return wrongIds.value.filter(id => {
+    const q = allQuestions.value.find(q => q.id === id)
+    return q && (q.type || 'unknown') === selectedType.value
+  })
+})
+
+// 掌握率
+const masteryRate = computed(() => {
+  const total = wrongIds.value.length + masteredIds.value.length
+  return total > 0 ? Math.round((masteredIds.value.length / total) * 100) : 0
+})
 
 onMounted(async () => {
   await loadData()
@@ -129,7 +214,26 @@ async function loadData() {
 }
 
 function start() {
-  queue.value = [...wrongIds.value]
+  queue.value = [...filteredWrongIds.value]
+  idx.value = 0
+  practiceMode.value = 'pending'
+  practicing.value = true
+  loadCurrent()
+}
+
+// 强化练习：只练习连续答错3次以上的题目
+function startIntensive() {
+  const intensiveIds = filteredWrongIds.value.filter(id => {
+    const streak = streakMap.value.get(id) || 0
+    return streak < 2  // 连续答对次数少于2的题目需要强化
+  })
+  
+  if (intensiveIds.length === 0) {
+    toastInfo('没有需要强化的错题')
+    return
+  }
+  
+  queue.value = intensiveIds
   idx.value = 0
   practiceMode.value = 'pending'
   practicing.value = true
@@ -295,6 +399,25 @@ function getQuestionPreview(id: number): string {
 .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--color-border); }
 .tabs button { background: none; border: none; padding: 8px 16px; cursor: pointer; color: var(--color-text-secondary); border-bottom: 2px solid transparent; }
 .tabs button.active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+
+/* 错题分类筛选 */
+.wrong-filter { margin-bottom: 20px; }
+.filter-label { font-size: 14px; color: var(--color-text-secondary); margin-bottom: 8px; }
+.filter-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.filter-tags button { padding: 6px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-card); color: var(--color-text-secondary); font-size: 13px; cursor: pointer; transition: all 0.15s; }
+.filter-tags button:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.filter-tags button.active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+
+/* 错题统计 */
+.wrong-stats { display: flex; gap: 24px; margin-bottom: 20px; padding: 16px; background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); }
+.stat-item { display: flex; flex-direction: column; align-items: center; }
+.stat-value { font-size: 24px; font-weight: 600; color: var(--color-primary); }
+.stat-label { font-size: 12px; color: var(--color-text-secondary); margin-top: 4px; }
+
+/* 强化练习按钮 */
+.intensive-btn { background: var(--color-warning-light); border-color: var(--color-warning); color: var(--color-warning); margin-left: 8px; }
+.intensive-btn:hover { background: var(--color-warning); color: #fff; }
+
 .actions-bar { margin-bottom: 16px; }
 .empty { text-align: center; padding: 48px; color: var(--color-text-tertiary); }
 .hint { color: var(--color-text-tertiary); font-size: 13px; padding: 16px 0; }

@@ -10,10 +10,12 @@ interface DBSchema {
   favorites: { keyPath: 'id'; indexes: { bank_id: 'bank_id' } }
   settings: { keyPath: 'key' }
   compose_records: { keyPath: 'id'; indexes: { created_at: 'created_at' } }
+  study_plans: { keyPath: 'id'; indexes: { created_at: 'created_at' } }
+  review_records: { keyPath: 'id'; indexes: { question_id: 'question_id'; next_review: 'next_review' } }
 }
 
 const DB_NAME = 'shuati-bao-pwa'
-const DB_VERSION = 3
+const DB_VERSION = 4
 
 let dbPromise: Promise<IDBDatabase> | null = null
 
@@ -56,6 +58,16 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains('compose_records')) {
         const store = db.createObjectStore('compose_records', { keyPath: 'id', autoIncrement: true })
         store.createIndex('created_at', 'created_at', { unique: false })
+      }
+      // v4：学习计划和复习记录
+      if (!db.objectStoreNames.contains('study_plans')) {
+        const store = db.createObjectStore('study_plans', { keyPath: 'id', autoIncrement: true })
+        store.createIndex('created_at', 'created_at', { unique: false })
+      }
+      if (!db.objectStoreNames.contains('review_records')) {
+        const store = db.createObjectStore('review_records', { keyPath: 'id', autoIncrement: true })
+        store.createIndex('question_id', 'question_id', { unique: false })
+        store.createIndex('next_review', 'next_review', { unique: false })
       }
     }
     req.onsuccess = () => resolve(req.result)
@@ -499,5 +511,68 @@ export const idb = {
     const correct = uniq.filter(r => r.is_correct).length
     const mastered = (await this.listMastered(bankId)).length
     return { total: qs.length, practiced, correct, mastered }
+  },
+  // === study_plans ===
+  async createPlan(data: any): Promise<any> {
+    const id = await tx('study_plans', 'readwrite', s => s.add(data)) as unknown as number
+    return { id, ...data }
+  },
+  async listPlans(): Promise<any[]> {
+    const db = await openDB()
+    return new Promise((resolve, reject) => {
+      const t = db.transaction('study_plans', 'readonly')
+      const idx = t.objectStore('study_plans').index('created_at')
+      const req = idx.getAll()
+      req.onsuccess = () => resolve(req.result.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))))
+      req.onerror = () => reject(req.error)
+    })
+  },
+  async getPlan(id: number): Promise<any | null> {
+    const v = await tx('study_plans', 'readonly', s => s.get(id))
+    return v ?? null
+  },
+  async updatePlan(id: number, data: any): Promise<void> {
+    await tx('study_plans', 'readwrite', s => s.put({ id, ...data }))
+  },
+  async deletePlan(id: number): Promise<void> {
+    await tx('study_plans', 'readwrite', s => s.delete(id))
+  },
+  // === review_records ===
+  async addReviewRecord(data: any): Promise<number> {
+    return tx('review_records', 'readwrite', s => s.add(data)) as unknown as number
+  },
+  async getReviewRecordByQuestionId(questionId: number): Promise<any | null> {
+    const db = await openDB()
+    return new Promise((resolve, reject) => {
+      const t = db.transaction('review_records', 'readonly')
+      const idx = t.objectStore('review_records').index('question_id')
+      const req = idx.getAll(IDBKeyRange.only(questionId))
+      req.onsuccess = () => {
+        const records = req.result
+        if (records.length > 0) {
+          // 返回最新的记录
+          resolve(records.sort((a, b) => String(b.last_review).localeCompare(String(a.last_review)))[0])
+        } else {
+          resolve(null)
+        }
+      }
+      req.onerror = () => reject(req.error)
+    })
+  },
+  async updateReviewRecord(id: number, data: any): Promise<void> {
+    await tx('review_records', 'readwrite', s => s.put({ id, ...data }))
+  },
+  async listReviewRecords(): Promise<any[]> {
+    return tx('review_records', 'readonly', s => s.getAll())
+  },
+  async getReviewRecordsByNextReview(date: string): Promise<any[]> {
+    const db = await openDB()
+    return new Promise((resolve, reject) => {
+      const t = db.transaction('review_records', 'readonly')
+      const idx = t.objectStore('review_records').index('next_review')
+      const req = idx.getAll(IDBKeyRange.upperBound(date))
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
   },
 }

@@ -45,6 +45,24 @@
       </div>
     </div>
 
+    <!-- 学习计划入口 -->
+    <div v-if="studyPlan" class="study-plan-card" @click="$router.push('/study-plan')">
+      <div class="sp-left">
+        <img class="sp-icon" src="/icons/plan.gif" alt="📋" />
+        <div>
+          <div class="sp-title">{{ studyPlan.name }}</div>
+          <div class="sp-sub">今日目标：{{ studyPlan.dailyGoal }}题 · 已完成 {{ todayCompleted }}题</div>
+        </div>
+      </div>
+      <div class="sp-progress">
+        <div class="sp-progress-bar">
+          <div class="sp-progress-fill" :style="{ width: todayProgress + '%' }"></div>
+        </div>
+        <div class="sp-progress-text">{{ todayProgress }}%</div>
+      </div>
+      <div class="sp-arrow">›</div>
+    </div>
+
     <div v-if="lastPractice" class="resume-card" @click="resumePractice">
       <div class="resume-info">
         <div class="resume-label">继续刷题</div>
@@ -189,6 +207,8 @@ import { listPublicBanks, listExams, listPublicBankQuestions, classifyQuestionTy
 import { toastSuccess, toastError } from '../utils/toast'
 import { recordVisit, getVisitStats } from '../lib/visit'
 import { poemOfTheDay, todayLabel, type Poem } from '../lib/poems'
+import { idb } from '../lib/db'
+import { formatDate } from '../lib/spaced-repetition'
 
 interface LastPractice {
   bank_id: number
@@ -220,6 +240,9 @@ const importProgress = ref<{ done: number; total: number } | null>(null)
 const visitStats = ref<{ total: number; today: number } | null>(null)
 const dailyPoem = ref<Poem | null>(null)
 const todayText = ref('')
+const studyPlan = ref<any>(null)
+const todayCompleted = ref(0)
+const todayProgress = ref(0)
 
 const totalQuestions = computed(() => bankStore.banks.reduce((s, b) => s + b.question_count, 0))
 // 已掌握 = 错题本里标记「已掌握」的真实数量（2026-08-15 修复：此前用已练习数近似）
@@ -273,12 +296,33 @@ const inMenu = (e: Event): boolean => {
 }
 const onDocClick = (e: Event) => { if (!inMenu(e)) closeMenu() }
 
+// 加载学习计划
+async function loadStudyPlan() {
+  try {
+    const plans = await idb.listPlans()
+    if (plans.length > 0) {
+      studyPlan.value = plans[0]
+      // 计算今日完成情况
+      const today = formatDate(new Date())
+      const stored = localStorage.getItem(`completed_${studyPlan.value.id}_${today}`)
+      const completed = stored ? JSON.parse(stored) : []
+      todayCompleted.value = completed.length
+      todayProgress.value = studyPlan.value.dailyGoal > 0 
+        ? Math.min(100, Math.round((completed.length / studyPlan.value.dailyGoal) * 100))
+        : 0
+    }
+  } catch (e) {
+    console.error('加载学习计划失败：', e)
+  }
+}
+
 onMounted(async () => {
   document.addEventListener('click', onDocClick)
   document.addEventListener('touchstart', onDocClick, { passive: true })
-  // 并行加载：本地题库 + 云端公共数据（公共部分失败不影响本地使用）
+  // 并行加载：本地题库 + 云端公共数据 + 学习计划（公共部分失败不影响本地使用）
   await Promise.allSettled([
     loadPublicData(),
+    loadStudyPlan(),
     bankStore.load().then(async () => {
       // 加载每个题库统计
       await Promise.all(bankStore.banks.map(async b => {
@@ -649,6 +693,19 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
   .resume-card { padding: 14px 16px; }
   .modal-body { min-width: 0; }
 }
+
+/* 学习计划卡片 */
+.study-plan-card { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; margin-bottom: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border-radius: var(--radius-xl); cursor: pointer; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3); transition: transform 0.15s, box-shadow 0.15s; }
+.study-plan-card:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(102, 126, 234, 0.4); }
+.sp-left { display: flex; align-items: center; gap: 12px; }
+.sp-icon { width: 32px; height: 32px; }
+.sp-title { font-size: 18px; font-weight: bold; }
+.sp-sub { font-size: 13px; opacity: 0.9; margin-top: 4px; }
+.sp-progress { min-width: 100px; }
+.sp-progress-bar { height: 8px; background: rgba(255, 255, 255, 0.3); border-radius: 4px; overflow: hidden; margin-bottom: 4px; }
+.sp-progress-fill { height: 100%; background: #fff; border-radius: 4px; transition: width 0.3s ease; }
+.sp-progress-text { text-align: center; font-size: 14px; font-weight: 500; }
+.sp-arrow { font-size: 32px; line-height: 1; opacity: 0.8; }
 
 .resume-card { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; margin-bottom: 16px; background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%); color: #fff; border-radius: var(--radius-xl); cursor: pointer; box-shadow: 0 4px 12px rgba(66, 184, 131, 0.3); transition: transform 0.15s, box-shadow 0.15s; }
 .resume-card:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(66, 184, 131, 0.4); }
