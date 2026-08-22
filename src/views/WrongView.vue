@@ -122,6 +122,7 @@ import { useRoute } from 'vue-router'
 import { api, Question } from '../utils/api'
 import { toastError, toastSuccess, toastInfo } from '../utils/toast'
 import QuestionCard from '../components/QuestionCard.vue'
+import { classifyQuestionType } from '../lib/exam'
 
 const route = useRoute()
 const bankId = Number(route.params.bankId)
@@ -140,29 +141,30 @@ const practiceMode = ref<'pending' | 'mastered'>('pending')  // 当前练习队�
 const selectedType = ref<string>('all')  // 选中的题型筛选
 
 // 计算题型分类
+// 2026-08-22 修复：此前用 q.type 判断——云端判断题存 type:'single' + ["正确","错误"]（历史格式），
+// 「判断题」筛选永远 0 题。改用 classifyQuestionType 内容识别（与练习页/PracticeView 一致）
 const questionTypes = computed(() => {
   const types: { value: string; label: string; count: number }[] = [
     { value: 'all', label: '全部', count: wrongIds.value.length }
   ]
-  
+
   const typeMap = new Map<string, number>()
   for (const id of wrongIds.value) {
     const q = allQuestions.value.find(q => q.id === id)
     if (q) {
-      const type = q.type || 'unknown'
+      const type = classifyQuestionType(q)
       typeMap.set(type, (typeMap.get(type) || 0) + 1)
     }
   }
-  
+
   const typeLabels: Record<string, string> = {
     'single': '单选题',
     'multi': '多选题',
     'judge': '判断题',
     'blank': '填空题',
-    'qa': '问答题',
-    'unknown': '其他'
+    'qa': '问答题'
   }
-  
+
   for (const [type, count] of typeMap) {
     types.push({
       value: type,
@@ -170,7 +172,7 @@ const questionTypes = computed(() => {
       count
     })
   }
-  
+
   return types
 })
 
@@ -181,7 +183,7 @@ const filteredWrongIds = computed(() => {
   }
   return wrongIds.value.filter(id => {
     const q = allQuestions.value.find(q => q.id === id)
-    return q && (q.type || 'unknown') === selectedType.value
+    return q && classifyQuestionType(q) === selectedType.value
   })
 })
 

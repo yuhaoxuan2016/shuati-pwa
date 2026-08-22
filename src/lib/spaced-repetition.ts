@@ -32,13 +32,16 @@ export interface DailyTask {
  * @param quality 答题质量（0-5）
  * @param repetitions 连续正确次数
  * @param easeFactor 难度因子
+ * @param previousInterval 上次复习间隔（天）——2026-08-22 修复：此前函数内部 interval 未初始化，
+ *        连续答对第 3 次起 interval*EF 得 NaN，复习日期变 Invalid Date
  * @returns 下次复习日期和更新后的参数
  */
 export function calculateNextReview(
   lastReview: Date,
   quality: number,
   repetitions: number,
-  easeFactor: number
+  easeFactor: number,
+  previousInterval = 0
 ): { nextReview: Date; newRepetitions: number; newEaseFactor: number; newInterval: number } {
   let interval: number
   let newRepetitions = repetitions
@@ -51,13 +54,15 @@ export function calculateNextReview(
   } else {
     // 答对
     newRepetitions = repetitions + 1
-    
+
     if (newRepetitions === 1) {
       interval = 1
     } else if (newRepetitions === 2) {
       interval = 3
     } else {
-      interval = Math.round(interval * easeFactor)
+      // SM-2：间隔 = 上次间隔 × 难度因子（首答对后第一次用 EF 时以 3 天为基准）
+      const base = previousInterval > 0 ? previousInterval : 3
+      interval = Math.round(base * easeFactor)
     }
   }
 

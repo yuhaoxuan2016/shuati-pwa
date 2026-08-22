@@ -164,8 +164,9 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, Question } from '../utils/api'
-import { toastError, toastSuccess } from '../utils/toast'
+import { toastError, toastSuccess, toastInfo } from '../utils/toast'
 import { useBankStore } from '../stores/bank'
+import { idb } from '../lib/db'
 import QuestionCard, { type QuestionState } from '../components/QuestionCard.vue'
 import { classifyQuestionType } from '../lib/exam'
 
@@ -181,6 +182,12 @@ interface SavedProgress {
 const route = useRoute()
 const bankStore = useBankStore()
 const bankId = Number(route.params.bankId)
+// 2026-08-22：智能学习计划模式——队列来自 StudyPlanView 写入的 localStorage（study_plan_questions）
+// 修复前：计划跳转路由错误 404，且 mode=plan / study_plan_questions 无消费方，计划功能完全断裂
+const isPlanMode = route.query.mode === 'plan'
+const planItems = ref<{ id: number; bankId: number }[]>([])
+const planId = ref<string | null>(null)
+const planQueueReady = ref(false)
 const bankName = computed(() => bankStore.banks.find(b => b.id === bankId)?.name || '')
 const questions = ref<Question[]>([])
 const order = ref<number[]>([])
@@ -287,7 +294,37 @@ onMounted(async () => {
   window.addEventListener('keydown', onKeydown)
   try {
     questions.value = await api.listQuestions(bankId)
-    order.value = questions.value.map((_, i) => i)
+    if (isPlanMode) {
+      // 计划模式：读取 StudyPlanView 写入的今日任务队列，过滤出属于当前题库的题
+      try {
+        const raw = localStorage.getItem('study_plan_questions')
+        planId.value = localStorage.getItem('study_plan_id')
+        if (raw) {
+          const items = JSON.parse(raw) as { id: number; bankId: number }[]
+          const bankIdSet = new Set(items.map(i => i.bankId))
+          if (!bankIdSet.has(bankId) && bankIdSet.size > 1) {
+            // 队列里没有当前题库的题（跨题库计划），提示并回退普通练习
+            toastInfo('今日计划中没有本题库的题目，已进入普通练习')
+          }
+          const allowed = new Set(items.filter(i => i.bankId === bankId).map(i => i.id))
+          if (allowed.size > 0) {
+            const idxMap = new Map(questions.value.map((q, i) => [q.id, i]))
+            const planOrder = Array.from(allowed)
+              .map(id => idxMap.get(id))
+              .filter((i): i is number => i !== undefined)
+            if (planOrder.length > 0) {
+              order.value = planOrder
+              planQueueReady.value = true
+            }
+          }
+        }
+      } catch (e) {
+        console.error('读取计划队列失败：', e)
+      }
+    }
+    if (!planQueueReady.value) {
+      order.value = questions.value.map((_, i) => i)
+    }
     // 加载收藏列表
     try {
       const favIds = await api.listFavorites(bankId)
@@ -295,7 +332,10 @@ onMounted(async () => {
     } catch (e) {
       console.error('加载收藏列表失败：', e)
     }
-    await restoreProgress()
+    if (!isPlanMode) {
+      // 计划模式不恢复普通练习进度（避免计划队列污染/被污染）
+      await restoreProgress()
+    }
   } catch (e) {
     toastError('加载题目失败：' + (e instanceof Error ? e.message : String(e)))
   } finally {
@@ -404,6 +444,8 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null
 function scheduleSave() {
   if (restoring.value) return
   if (!loaded.value) return
+  // 2026-08-22：计划模式不写入普通练习进度（队列来自计划，避免下次普通练习被计划队列污染）
+  if (isPlanMode) return
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(saveProgress, 500)
 }
@@ -510,6 +552,62 @@ async function onAnswered(payload: { correct: boolean; answer: string; duration_
     await bumpDailyRecord(payload.correct)
   } catch (e) {
     console.error('记录练习失败：', e)
+  }
+  // 2026-08-22：智能学习计划模式 → 回写复习记录（SM-2）+ 今日完成计数
+  // 修复前：calculateNextReview 无调用方、完成状态无回写 → 计划永远只有新题、进度永远 0
+  if (isPlanMode) {
+    try {
+      await updatePlanReview(q.id, payload.correct)
+      await markPlanCompleted(q.id)
+    } catch (e) {
+      console.error('回写学习计划进度失败：', e)
+    }
+  }
+}
+
+// 计划模式：更新/创建复习记录（间隔重复 SM-2）
+async function updatePlanReview(questionId: number, correct: boolean) {
+  const { calculateNextReview } = await import('../lib/spaced-repetition')
+  const record = await idb.getReviewRecordByQuestionId(questionId)
+  const now = new Date()
+  const quality = correct ? 4 : 1
+  const result = calculateNextReview(
+    record?.last_review ? new Date(record.last_review) : now,
+    quality,
+    record?.repetitions ?? 0,
+    record?.ease_factor ?? 2.5,
+    record?.interval ?? 0
+  )
+  const data = {
+    question_id: questionId,
+    bank_id: bankId,
+    last_review: result.nextReview,
+    quality,
+    repetitions: result.newRepetitions,
+    ease_factor: result.newEaseFactor,
+    interval: result.newInterval,
+  }
+  if (record?.id != null) {
+    await idb.updateReviewRecord(record.id, data)
+  } else {
+    await idb.addReviewRecord(data)
+  }
+}
+
+// 计划模式：记录今日完成（completed_<planId>_<date>，供 StudyPlanView/首页进度展示）
+async function markPlanCompleted(questionId: number) {
+  if (!planId.value) return
+  const { formatDate } = await import('../lib/spaced-repetition')
+  const key = `completed_${planId.value}_${formatDate(new Date())}`
+  try {
+    const raw = localStorage.getItem(key)
+    const list: number[] = raw ? JSON.parse(raw) : []
+    if (!list.includes(questionId)) {
+      list.push(questionId)
+      localStorage.setItem(key, JSON.stringify(list))
+    }
+  } catch (e) {
+    console.error('记录计划完成失败：', e)
   }
 }
 

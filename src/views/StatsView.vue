@@ -262,18 +262,28 @@ async function loadTrendData() {
   try {
     const raw = await api.getSetting('daily_records')
     if (!raw) return
-    
-    const records = JSON.parse(raw) as { date: string; total: number; correct: number }[]
+
+    // 2026-08-22 修复：JSON.parse 加兜底（数据损坏时降级为空，不再整块崩溃）
+    let records: { date: string; total: number; correct: number }[] = []
+    try {
+      records = JSON.parse(raw) as { date: string; total: number; correct: number }[]
+    } catch (e) {
+      console.error('daily_records 解析失败，趋势图降级为空：', e)
+      return
+    }
     const last30Days = records.slice(-30)
-    
+
     if (last30Days.length === 0) return
-    
+
     // 计算统计数据
     const totalQuestions = last30Days.reduce((sum, r) => sum + r.total, 0)
-    dailyAverage.value = Math.round(totalQuestions / last30Days.length)
+    // 2026-08-22 修复：日均 = 总题数 / 有学习的天数（此前除以 30，
+    // 只学了几天的用户日均被严重拉低，与「学习天数」并列展示口径不一致）
+    const studyDaysCount = last30Days.filter(r => r.total > 0).length
+    dailyAverage.value = studyDaysCount > 0 ? Math.round(totalQuestions / studyDaysCount) : 0
     maxDaily.value = Math.max(...last30Days.map(r => r.total))
-    studyDays.value = last30Days.filter(r => r.total > 0).length
-    
+    studyDays.value = studyDaysCount
+
     // 绘制趋势图
     drawTrendChart(last30Days)
   } catch (e) {
@@ -297,7 +307,10 @@ function drawTrendChart(records: { date: string; total: number; correct: number 
   const chartHeight = canvas.height - padding.top - padding.bottom
   
   if (records.length === 0) return
-  
+
+  // 2026-08-22 修复：只有 1 条记录时 records.length-1=0 导致 x=Infinity/NaN（画不出图）
+  const xStep = records.length > 1 ? records.length - 1 : 1
+
   // 找到最大值
   const maxValue = Math.max(...records.map(r => r.total), 1)
   
@@ -326,7 +339,7 @@ function drawTrendChart(records: { date: string; total: number; correct: number 
   ctx.textAlign = 'center'
   const step = Math.max(1, Math.floor(records.length / 7))
   for (let i = 0; i < records.length; i += step) {
-    const x = padding.left + (chartWidth / (records.length - 1)) * i
+    const x = padding.left + (chartWidth / xStep) * i
     const date = records[i].date.slice(5) // 只显示月-日
     ctx.fillText(date, x, canvas.height - 10)
   }
@@ -337,7 +350,7 @@ function drawTrendChart(records: { date: string; total: number; correct: number 
   ctx.beginPath()
   
   for (let i = 0; i < records.length; i++) {
-    const x = padding.left + (chartWidth / (records.length - 1)) * i
+    const x = padding.left + (chartWidth / xStep) * i
     const y = padding.top + chartHeight - (records[i].total / maxValue) * chartHeight
     
     if (i === 0) {
@@ -351,7 +364,7 @@ function drawTrendChart(records: { date: string; total: number; correct: number 
   // 绘制数据点
   ctx.fillStyle = '#3B82F6'
   for (let i = 0; i < records.length; i++) {
-    const x = padding.left + (chartWidth / (records.length - 1)) * i
+    const x = padding.left + (chartWidth / xStep) * i
     const y = padding.top + chartHeight - (records[i].total / maxValue) * chartHeight
     
     ctx.beginPath()
@@ -369,7 +382,7 @@ function drawTrendChart(records: { date: string; total: number; correct: number 
     for (let i = 0; i < records.length; i++) {
       if (records[i].total === 0) continue
       
-      const x = padding.left + (chartWidth / (records.length - 1)) * i
+      const x = padding.left + (chartWidth / xStep) * i
       const accuracy = records[i].correct / records[i].total
       const y = padding.top + chartHeight - accuracy * chartHeight
       

@@ -94,7 +94,7 @@ import { useRouter } from 'vue-router'
 import { api } from '../utils/api'
 import { idb } from '../lib/db'
 import { calculateDailyTask, formatDate } from '../lib/spaced-repetition'
-import { toastSuccess, toastError } from '../utils/toast'
+import { toastSuccess, toastError, toastInfo } from '../utils/toast'
 
 const router = useRouter()
 
@@ -105,6 +105,8 @@ const banks = ref<any[]>([])
 const currentPlan = ref<any>(null)
 const todayTask = ref<any>({ reviewQuestions: [], newQuestions: [], totalGoal: 0 })
 const completedQuestions = ref<number[]>([])
+// 2026-08-22：题目 id → 所属题库 id 映射（计划跨题库时，练习页需要按题库过滤队列）
+const planQuestionBankMap = ref<Map<number, number>>(new Map())
 
 // 表单
 const form = ref({
@@ -157,9 +159,13 @@ async function loadTodayTask() {
   try {
     // 获取计划中的所有题目
     const allQuestions: { id: number; bankId: number }[] = []
+    planQuestionBankMap.value.clear()
     for (const bankId of currentPlan.value.bankIds) {
       const questions = await api.listQuestions(bankId)
-      allQuestions.push(...questions.map(q => ({ id: q.id, bankId: q.bank_id })))
+      for (const q of questions) {
+        planQuestionBankMap.value.set(q.id, q.bank_id)
+        allQuestions.push({ id: q.id, bankId: q.bank_id })
+      }
     }
     
     // 获取复习记录
@@ -229,20 +235,36 @@ function startPlan(plan: any) {
 }
 
 // 开始练习
+// 2026-08-22 修复：
+// 1. 路由错误：/bank/:id/practice 不存在（404 回首页），改为实际路由 /practice/:bankId?mode=plan
+// 2. 队列带 bankId：PracticeView 计划模式按 (id, bankId) 过滤出属于当前题库的题
+// 3. 任务总数落盘：首页进度条需要知道今日任务总数（completed/dailyGoal 口径不对）
 function startPractice() {
   if (!currentPlan.value) return
-  
-  // 将今日任务的题目ID存储到本地
+
+  // 将今日任务的题目ID + 题库ID 存储到本地（按 id → bankId 映射，跨题库计划可正确过滤）
   const questionIds = [
     ...todayTask.value.reviewQuestions,
     ...todayTask.value.newQuestions
   ]
-  
-  localStorage.setItem('study_plan_questions', JSON.stringify(questionIds))
+  const planItems = questionIds.map(id => ({
+    id,
+    bankId: planQuestionBankMap.value.get(id) ?? currentPlan.value.bankIds[0]
+  }))
+  localStorage.setItem('study_plan_questions', JSON.stringify(planItems))
   localStorage.setItem('study_plan_id', currentPlan.value.id.toString())
-  
-  // 跳转到练习页面
-  router.push(`/bank/${currentPlan.value.bankIds[0]}/practice?mode=plan`)
+  // 今日任务总数（供首页进度计算）
+  const today = formatDate(new Date())
+  const taskTotal = todayTask.value.reviewQuestions.length + todayTask.value.newQuestions.length
+  localStorage.setItem(`task_total_${currentPlan.value.id}_${today}`, String(taskTotal))
+
+  if (currentPlan.value.bankIds.length > 1) {
+    const firstName = getBankNames([currentPlan.value.bankIds[0]])
+    toastInfo(`本次练习仅包含「${firstName}」的题目，其余题库请在对应题库中练习`)
+  }
+
+  // 2026-08-22 修复：实际路由是 /practice/:bankId（此前 /bank/:id/practice 404 回首页）
+  router.push(`/practice/${currentPlan.value.bankIds[0]}?mode=plan`)
 }
 
 // 获取题库名称

@@ -230,7 +230,7 @@ export const api = {
   },
 }
 
-// 导出全部数据（用于备份/迁移）：题库 + 题目 + 错题 + 收藏 + 练习记录 + 设置
+// 导出全部数据（用于备份/迁移）：题库 + 题目 + 错题 + 收藏 + 练习记录 + 设置 + 学习计划
 export async function exportAll() {
   const db = await import('../lib/db')
   const m = (db as any).idb
@@ -245,6 +245,8 @@ export async function exportAll() {
     practice_records: await m.listAll('practice_records'),
     mastered_questions: await m.listAll('mastered_questions'),
     compose_records: await m.listAll('compose_records'),
+    study_plans: await m.listAll('study_plans'),       // 2026-08-22：学习计划加入备份
+    review_records: await m.listAll('review_records'), // 2026-08-22：复习记录加入备份
     settings: await m.getAllSettings(),
   }
 }
@@ -262,6 +264,8 @@ export async function restoreBackup(data: any, onProgress?: (msg: string) => voi
     practice_records: 'practice_records',
     mastered_questions: 'mastered_questions',
     compose_records: 'compose_records',
+    study_plans: 'study_plans',       // 2026-08-22：学习计划加入恢复
+    review_records: 'review_records', // 2026-08-22：复习记录加入恢复
     settings: 'settings',
   }
   const keys = Object.keys(storeMap).filter(k => Array.isArray(data[k]))

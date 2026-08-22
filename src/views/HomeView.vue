@@ -307,9 +307,12 @@ async function loadStudyPlan() {
       const stored = localStorage.getItem(`completed_${studyPlan.value.id}_${today}`)
       const completed = stored ? JSON.parse(stored) : []
       todayCompleted.value = completed.length
-      todayProgress.value = studyPlan.value.dailyGoal > 0 
-        ? Math.min(100, Math.round((completed.length / studyPlan.value.dailyGoal) * 100))
-        : 0
+      // 2026-08-22 修复：进度分母用「今日任务总数」（StudyPlanView 落盘 task_total_*），
+      // 此前用 dailyGoal 导致任务 10 题/目标 50 题时进度只显示 20%，与计划页口径不一致
+      const taskTotalRaw = localStorage.getItem(`task_total_${studyPlan.value.id}_${today}`)
+      const taskTotal = taskTotalRaw ? parseInt(taskTotalRaw, 10) : 0
+      const denominator = taskTotal > 0 ? taskTotal : (studyPlan.value.dailyGoal || 1)
+      todayProgress.value = Math.min(100, Math.round((completed.length / denominator) * 100))
     }
   } catch (e) {
     console.error('加载学习计划失败：', e)
