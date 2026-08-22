@@ -154,7 +154,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
 import { api, toLocalDateStr, addDays } from '../utils/api'
 import { toastError } from '../utils/toast'
@@ -197,8 +197,8 @@ async function loadWrongStats() {
       masteryRate: total > 0 ? Math.round((masteredCount / total) * 100) : 0
     }
     
-    // 绘制错题图表
-    drawWrongChart()
+    // 绘制错题图表（2026-08-22：仅当 loaded 后才画，canvas 已挂载；否则交给 watch(loaded) 补画）
+    if (loaded.value) drawWrongChart()
   } catch (e) {
     console.error('加载错题统计失败：', e)
   }
@@ -284,8 +284,8 @@ async function loadTrendData() {
     maxDaily.value = Math.max(...last30Days.map(r => r.total))
     studyDays.value = studyDaysCount
 
-    // 绘制趋势图
-    drawTrendChart(last30Days)
+    // 绘制趋势图（2026-08-22：仅当 loaded 后才画，canvas 已挂载；否则交给 watch(loaded) 补画）
+    if (loaded.value) drawTrendChart(last30Days)
   } catch (e) {
     console.error('加载学习趋势失败：', e)
   }
@@ -408,9 +408,32 @@ onMounted(async () => {
     await loadWrongStats()
     await loadTrendData()
   } catch (e) {
-    console.error('加载热力图失败：', e)
+    console.error('加载数据失败：', e)
   } finally {
     loaded.value = true
+  }
+})
+
+// 2026-08-22 修复：图表空白 bug。此前 loadWrongStats/loadTrendData 在 loaded=true 之前执行，
+// 此时 canvas 尚未渲染（v-if="!loaded" 分支），wrongChartRef/trendChartRef 为 null → 图表函数直接 return，
+// 数据其实已加载（统计数字正常）但图永远不会画出来。
+// 修复：loaded 置 true 后 nextTick 等待 DOM 挂载，再补画两个图表；并 watch loaded 兜底确保重渲染。
+watch(loaded, async (val) => {
+  if (val) {
+    await nextTick()
+    // 数据已在 loadWrongStats/loadTrendData 里算好，这里只需真正画出来
+    drawWrongChart()
+    // 趋势图需要数据，重新读取并绘制
+    try {
+      const raw = await api.getSetting('daily_records')
+      let records: { date: string; total: number; correct: number }[] = []
+      try {
+        records = raw ? JSON.parse(raw) : []
+      } catch { /* ignore */ }
+      if (records.length) drawTrendChart(records.slice(-30))
+    } catch (e) {
+      console.error('补画趋势图失败：', e)
+    }
   }
 })
 
