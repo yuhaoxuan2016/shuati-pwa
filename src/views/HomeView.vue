@@ -774,6 +774,17 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
   .dropdown-menu { right: 8px; }
   .resume-card { padding: 14px 16px; }
   .modal-body { min-width: 0; }
+  /* 记忆复习入口卡片移动端 */
+  .memory-entry-card { flex-direction: column; align-items: stretch; gap: 10px; padding: 14px 16px; }
+  .me-right { min-width: 0; }
+  .me-health-wrap { width: 100%; }
+  .me-arrow { display: none; }
+  .me-sub { font-size: 12px; }
+  .me-exam { font-size: 11px; }
+  /* 学习计划卡片移动端 */
+  .study-plan-card { flex-direction: column; align-items: stretch; gap: 10px; padding: 14px 16px; }
+  .sp-progress { min-width: 0; }
+  .sp-arrow { display: none; }
 }
 
 /* 学习计划卡片 */

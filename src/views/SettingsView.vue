@@ -86,6 +86,14 @@
       <div v-if="showUpdateLog" class="update-log">
         <h4>更新日志</h4>
         <div class="log-entry">
+          <span class="log-version">v1.2.41</span>
+          <ul>
+            <li>整体代码审查：全库 bug 扫描 + 58 项单元测试全通过 + 全页面手机端适配检查</li>
+            <li>首页记忆复习入口卡片手机端适配：纵向堆叠、健康条全宽、隐藏箭头</li>
+            <li>首页学习计划卡片手机端适配：同步优化</li>
+          </ul>
+        </div>
+        <div class="log-entry">
           <span class="log-version">v1.2.40</span>
           <ul>
             <li>修复云同步题目叠加：cloudId 为空时按 stem+bank_id 去重，匹配后回写 cloud_id 防止下次再叠加</li>
@@ -531,7 +539,7 @@ import { ref, onMounted } from 'vue'
 import { api } from '../utils/api'
 import { toastSuccess, toastError } from '../utils/toast'
 
-const currentVersion = ref('1.2.40-web')
+const currentVersion = ref('1.2.41-web')
 const checkingUpdate = ref(false)
 const showUpdateLog = ref(false)
 
@@ -601,7 +609,7 @@ onMounted(async () => {
     console.error('获取数据库信息失败：', e)
     }
     // 读取应用版本（PWA 固定版本号）
-    currentVersion.value = '1.2.40-web'
+    currentVersion.value = '1.2.41-web'
     // 读取云同步配置
     loadCloudConfig()
     // 读取同步昵称
