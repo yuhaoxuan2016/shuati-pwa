@@ -40,8 +40,8 @@
       </div>
 
       <div class="actions-bar">
-        <button v-if="filteredWrongIds.length && !practicing" @click="start">错题重练</button>
-        <button v-if="filteredWrongIds.length && !practicing" @click="startIntensive" class="intensive-btn">强化练习</button>
+        <button v-if="filteredWrongIds.length && !practicing" @click="start">错题重练（全部）</button>
+        <button v-if="filteredWrongIds.length && !practicing" @click="startIntensive" class="intensive-btn">重点攻克（薄弱）</button>
         <button v-if="practicing" @click="exitPractice">退出重练</button>
       </div>
 
@@ -223,18 +223,18 @@ function start() {
   loadCurrent()
 }
 
-// 强化练习：只练习连续答错3次以上的题目
+// 重点攻克：只练习连续答对 0 次的题目（完全没掌握的薄弱题）
 function startIntensive() {
   const intensiveIds = filteredWrongIds.value.filter(id => {
     const streak = streakMap.value.get(id) || 0
-    return streak < 2  // 连续答对次数少于2的题目需要强化
+    return streak === 0  // 只练完全没掌握的（连对 0 次）
   })
-  
+
   if (intensiveIds.length === 0) {
-    toastInfo('没有需要强化的错题')
+    toastInfo('没有需要重点攻克的错题（所有错题都至少答对过 1 次）')
     return
   }
-  
+
   queue.value = intensiveIds
   idx.value = 0
   practiceMode.value = 'pending'
