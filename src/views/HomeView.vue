@@ -804,7 +804,7 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
 .memory-entry-card { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; margin-bottom: 16px; background: linear-gradient(135deg, var(--color-primary) 0%, var(--tc-strong) 100%); color: #fff; border-radius: var(--radius-xl); cursor: pointer; box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3); transition: transform 0.15s, box-shadow 0.15s; }
 .memory-entry-card:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(124, 58, 237, 0.4); }
 .me-left { display: flex; align-items: center; gap: 12px; }
-.me-icon-img { width: 38px; height: 38px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+.me-icon-img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: #fff; padding: 4px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15); }
 .me-title { font-size: 18px; font-weight: bold; }
 .me-sub { font-size: 13px; opacity: 0.9; margin-top: 4px; }
 .me-sub b { color: #fde68a; }

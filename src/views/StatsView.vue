@@ -618,9 +618,11 @@ async function loadHeatmap() {
 .heatmap-section h3 { margin: 0 0 12px 0; font-size: 15px; }
 .heatmap-wrap { overflow-x: auto; padding-bottom: 4px; }
 .heatmap-months { display: grid; grid-template-columns: 24px repeat(53, 12px); gap: 3px; font-size: 11px; color: var(--color-text-tertiary); margin-bottom: 4px; }
+[data-theme="dark"] .heatmap-months { color: var(--color-text-secondary); }
 .heatmap-months span { white-space: nowrap; }
 .heatmap-grid { display: flex; gap: 3px; }
 .weekday-labels { display: flex; flex-direction: column; gap: 3px; width: 24px; flex-shrink: 0; font-size: 10px; color: var(--color-text-tertiary); padding-top: 1px; }
+[data-theme="dark"] .weekday-labels { color: var(--color-text-secondary); }
 .weekday-labels span { height: 12px; line-height: 12px; }
 .heatmap-week { display: flex; flex-direction: column; gap: 3px; }
 .heatmap-cell { width: 12px; height: 12px; border-radius: 2px; background: var(--color-border-light); transition: transform 0.1s; }
