@@ -4,18 +4,7 @@
     <header class="mobile-header">
       <button class="hamburger" @click="sidebarOpen = true" aria-label="打开菜单">☰</button>
       <div class="mobile-logo">
-        <svg class="mobile-logo-svg" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <circle cx="40" cy="40" r="36" fill="currentColor" opacity="0.12"/>
-          <circle cx="40" cy="40" r="36" fill="none" stroke="currentColor" stroke-width="4"/>
-          <g fill="currentColor">
-            <ellipse cx="30" cy="22" rx="6" ry="14" transform="rotate(-8 30 22)"/>
-            <ellipse cx="50" cy="22" rx="6" ry="14" transform="rotate(8 50 22)"/>
-            <circle cx="40" cy="44" r="18"/>
-            <circle cx="33" cy="43" r="2.5" fill="#fff"/>
-            <circle cx="47" cy="43" r="2.5" fill="#fff"/>
-            <circle cx="40" cy="49" r="2" fill="#fff"/>
-          </g>
-        </svg>
+        <img src="/logo.gif?v=0.2.0" class="mobile-logo-img" alt="刷题宝" />
         <span>刷题宝</span>
       </div>
       <div class="mobile-header-actions">
@@ -31,22 +20,7 @@
 
     <aside class="sidebar" :class="{ open: sidebarOpen }">
       <div class="logo">
-        <svg class="logo-svg" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <circle cx="40" cy="40" r="36" fill="currentColor" opacity="0.12"/>
-          <circle cx="40" cy="40" r="36" fill="none" stroke="currentColor" stroke-width="4"/>
-          <g fill="currentColor">
-            <!-- 兔耳 -->
-            <ellipse cx="30" cy="22" rx="6" ry="14" transform="rotate(-8 30 22)"/>
-            <ellipse cx="50" cy="22" rx="6" ry="14" transform="rotate(8 50 22)"/>
-            <!-- 兔头 -->
-            <circle cx="40" cy="44" r="18"/>
-            <!-- 眼睛 -->
-            <circle cx="33" cy="43" r="2.5" fill="#fff"/>
-            <circle cx="47" cy="43" r="2.5" fill="#fff"/>
-            <!-- 鼻子 -->
-            <circle cx="40" cy="49" r="2" fill="#fff"/>
-          </g>
-        </svg>
+        <img src="/logo.gif?v=0.2.0" class="logo-img" alt="刷题宝" />
         <span>刷题宝</span>
       </div>
 
@@ -186,7 +160,6 @@ async function handleRestart() {
 .sidebar { width: 200px; background: var(--color-sidebar-bg); padding: 16px; border-right: 1px solid var(--color-border); overflow-y: auto; display: flex; flex-direction: column; }
 .logo { display: flex; align-items: center; gap: 8px; font-size: 18px; margin: 0 0 20px 0; color: var(--color-primary); padding: 4px 12px; font-weight: 700; letter-spacing: 0.5px; }
 .logo-img { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1); }
-.logo-svg { width: 32px; height: 32px; flex-shrink: 0; }
 .logo-icon { font-size: 22px; }
 .nav-icon { display: inline-block; width: 18px; text-align: center; margin-right: 4px; font-size: 14px; }
 
@@ -377,7 +350,6 @@ async function handleRestart() {
   .hamburger:active { background: var(--color-border-light); }
   .mobile-logo { display: flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 700; color: var(--color-primary); flex: 1; }
   .mobile-logo-img { width: 26px; height: 26px; border-radius: 5px; }
-  .mobile-logo-svg { width: 26px; height: 26px; flex-shrink: 0; }
   .mobile-header-actions { display: flex; gap: 4px; }
   .mobile-nav-link {
     text-decoration: none;
