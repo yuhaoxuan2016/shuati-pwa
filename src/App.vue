@@ -4,7 +4,7 @@
     <header class="mobile-header">
       <button class="hamburger" @click="sidebarOpen = true" aria-label="打开菜单">☰</button>
       <div class="mobile-logo">
-        <img src="/logo.gif?v=0.2.0" class="mobile-logo-img" alt="刷题宝" />
+        <img :src="currentLogoV" class="mobile-logo-img" alt="刷题宝" />
         <span>刷题宝</span>
       </div>
       <div class="mobile-header-actions">
@@ -20,7 +20,7 @@
 
     <aside class="sidebar" :class="{ open: sidebarOpen }">
       <div class="logo">
-        <img src="/logo.gif?v=0.2.0" class="logo-img" alt="刷题宝" />
+        <img :src="currentLogoV" class="logo-img" alt="刷题宝" />
         <span>刷题宝</span>
       </div>
 
@@ -81,7 +81,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { RouterView, RouterLink, useRoute } from 'vue-router'
 import { useBankStore } from './stores/bank'
 import { autoCheckOnStartup } from './utils/updater'
@@ -94,6 +94,37 @@ const bankStore = useBankStore()
 const currentBank = ref<{ id: number; name: string } | null>(null)
 const sidebarOpen = ref(false)
 const showContact = ref(false)
+
+// logo 随主题色切换（2026-08-23）：读取 documentElement 的 data-theme-color 选对应主题色版动画 GIF
+const themeColor = ref('green')
+const logoList: Record<string, string> = {
+  green: '/icons/logo-green.gif',
+  blue: '/icons/logo-blue.gif',
+  purple: '/icons/logo-purple.gif',
+  pink: '/icons/logo-pink.gif',
+  orange: '/icons/logo-orange.gif',
+  teal: '/icons/logo-teal.gif',
+  tech: '/icons/logo-tech.gif',
+  forest: '/icons/logo-forest.gif',
+  space: '/icons/logo-space.gif',
+  cloud: '/icons/logo-cloud.gif',
+}
+const currentLogo = computed(() => logoList[themeColor.value] || logoList.green)
+const currentLogoV = computed(() => `${currentLogo.value}?v=0.2.0`)
+
+function syncThemeColor() {
+  themeColor.value = (document.documentElement.getAttribute('data-theme-color') || 'green')
+}
+// 监听 data-theme-color 变化，logo 即时切换
+let themeObserver: MutationObserver | null = null
+onMounted(() => {
+  syncThemeColor()
+  themeObserver = new MutationObserver(syncThemeColor)
+  themeObserver.observe(document.documentElement, {
+    attributes: true, attributeFilter: ['data-theme-color'],
+  })
+})
+onBeforeUnmount(() => { themeObserver?.disconnect() })
 
 // 路由变化自动关闭抽屉（移动端点击导航后）
 watch(() => route.fullPath, () => { sidebarOpen.value = false })

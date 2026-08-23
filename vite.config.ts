@@ -8,7 +8,7 @@ export default defineConfig({
     vue(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["logo-64.png", "logo-192.png", "logo-256.png", "logo-512.png", "logo.gif", "contact-avatar.png", "wechat-qr.png", "icons/study.gif", "icons/exam.gif", "icons/mix.gif", "icons/flame.gif", "icons/plan.gif"],
+      includeAssets: ["logo-64.png", "logo-192.png", "logo-256.png", "logo-512.png", "logo.gif", "contact-avatar.png", "wechat-qr.png", "icons/study.gif", "icons/exam.gif", "icons/mix.gif", "icons/flame.gif", "icons/plan.gif", "icons/logo-green.gif", "icons/logo-blue.gif", "icons/logo-purple.gif", "icons/logo-pink.gif", "icons/logo-orange.gif", "icons/logo-teal.gif", "icons/logo-tech.gif", "icons/logo-forest.gif", "icons/logo-space.gif", "icons/logo-cloud.gif"],
       manifest: {
         name: "刷题宝（网页版）",
         short_name: "刷题宝",
