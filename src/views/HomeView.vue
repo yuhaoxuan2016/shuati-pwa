@@ -63,6 +63,22 @@
       <div class="sp-arrow">›</div>
     </div>
 
+    <!-- 记忆复习入口（2026-08-23 新增） -->
+    <div v-if="memoryDueCount >= 0" class="memory-entry-card" @click="$router.push('/memory-review')">
+      <div class="me-left">
+        <span class="me-icon">🧠</span>
+        <div>
+          <div class="me-title">记忆复习</div>
+          <div class="me-sub" v-if="memoryDueCount > 0">今日待复习 <b>{{ memoryDueCount }}</b> 题 · 记忆健康度 {{ memoryHealth }}%</div>
+          <div class="me-sub" v-else>今日无待复习，去刷题积累记忆</div>
+        </div>
+      </div>
+      <div class="me-right">
+        <div class="me-health-wrap"><div class="me-health-fill" :style="{ width: memoryHealth + '%' }"></div></div>
+        <div class="me-arrow">›</div>
+      </div>
+    </div>
+
     <div v-if="lastPractice" class="resume-card" @click="resumePractice">
       <div class="resume-info">
         <div class="resume-label">继续刷题</div>
@@ -243,6 +259,9 @@ const todayText = ref('')
 const studyPlan = ref<any>(null)
 const todayCompleted = ref(0)
 const todayProgress = ref(0)
+// 2026-08-23：记忆复习入口数据（今日待复习数 + 记忆健康度）；初始 -1 表示未加载
+const memoryDueCount = ref(-1)
+const memoryHealth = ref(0)
 
 const totalQuestions = computed(() => bankStore.banks.reduce((s, b) => s + b.question_count, 0))
 // 已掌握 = 错题本里标记「已掌握」的真实数量（2026-08-15 修复：此前用已练习数近似）
@@ -319,6 +338,43 @@ async function loadStudyPlan() {
   }
 }
 
+// 2026-08-23：加载记忆复习入口数据（今日待复习数 + 记忆健康度）
+// 用全量题目 + 复习记录在本地计算，失败静默不影响首页
+async function loadMemoryReviewStats() {
+  try {
+    const { idb } = await import('../lib/db')
+    const { getMemoryStrength, strengthLevel } = await import('../lib/spaced-repetition')
+    const allQ = await idb.listAll('questions')
+    const allRev = await idb.listAll('review_records')
+    // 每题取最新记录
+    const revMap = new Map<number, any>()
+    for (const r of allRev) {
+      if (r.question_id == null) continue
+      const ex = revMap.get(r.question_id)
+      if (!ex || String(r.last_review) > String(ex.last_review)) revMap.set(r.question_id, r)
+    }
+    // 今日到期数 + 健康度（有记录题目的平均权重分）
+    const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999)
+    let due = 0, score = 0, tracked = 0
+    for (const q of allQ) {
+      const r = revMap.get(q.id)
+      if (!r) continue
+      tracked++
+      const strength = getMemoryStrength(r.ease_factor ?? 2.5, r.interval ?? 0)
+      const lvl = strengthLevel(strength)
+      if (lvl === '强') score += 1
+      else if (lvl === '中') score += 0.6
+      else score += 0.3
+      const next = r.next_review ? new Date(r.next_review).getTime() : (r.last_review ? new Date(r.last_review).getTime() + (r.interval ?? 0) * 86400000 : 0)
+      if (!Number.isNaN(next) && next <= todayEnd.getTime()) due++
+    }
+    memoryDueCount.value = due
+    memoryHealth.value = tracked > 0 ? Math.round((score / tracked) * 100) : 0
+  } catch (e) {
+    console.error('加载记忆复习统计失败：', e)
+  }
+}
+
 onMounted(async () => {
   document.addEventListener('click', onDocClick)
   document.addEventListener('touchstart', onDocClick, { passive: true })
@@ -326,6 +382,7 @@ onMounted(async () => {
   await Promise.allSettled([
     loadPublicData(),
     loadStudyPlan(),
+    loadMemoryReviewStats(),
     bankStore.load().then(async () => {
       // 加载每个题库统计
       await Promise.all(bankStore.banks.map(async b => {
@@ -709,6 +766,19 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
 .sp-progress-fill { height: 100%; background: #fff; border-radius: 4px; transition: width 0.3s ease; }
 .sp-progress-text { text-align: center; font-size: 14px; font-weight: 500; }
 .sp-arrow { font-size: 32px; line-height: 1; opacity: 0.8; }
+
+/* 记忆复习入口卡片（2026-08-23） */
+.memory-entry-card { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; margin-bottom: 16px; background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); color: #fff; border-radius: var(--radius-xl); cursor: pointer; box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3); transition: transform 0.15s, box-shadow 0.15s; }
+.memory-entry-card:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(124, 58, 237, 0.4); }
+.me-left { display: flex; align-items: center; gap: 12px; }
+.me-icon { font-size: 30px; line-height: 1; }
+.me-title { font-size: 18px; font-weight: bold; }
+.me-sub { font-size: 13px; opacity: 0.9; margin-top: 4px; }
+.me-sub b { color: #fde68a; }
+.me-right { display: flex; align-items: center; gap: 12px; }
+.me-health-wrap { width: 90px; height: 8px; background: rgba(255, 255, 255, 0.3); border-radius: 4px; overflow: hidden; }
+.me-health-fill { height: 100%; background: #fff; border-radius: 4px; transition: width 0.3s ease; }
+.me-arrow { font-size: 32px; line-height: 1; opacity: 0.8; }
 
 .resume-card { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; margin-bottom: 16px; background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%); color: #fff; border-radius: var(--radius-xl); cursor: pointer; box-shadow: 0 4px 12px rgba(66, 184, 131, 0.3); transition: transform 0.15s, box-shadow 0.15s; }
 .resume-card:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(66, 184, 131, 0.4); }

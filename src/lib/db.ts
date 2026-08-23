@@ -575,4 +575,19 @@ export const idb = {
       req.onerror = () => reject(req.error)
     })
   },
+  // 2026-08-23 新增：按一组题目 id 批量查最新复习记录（记忆复习页一次拉取，避免逐题查）
+  // 返回 Map<questionId, record>；每个题目只保留 last_review 最新的那条（去重）
+  async getReviewRecordsByQuestionIds(ids: number[]): Promise<Map<number, any>> {
+    const all = await tx('review_records', 'readonly', s => s.getAll()) as any[]
+    const map = new Map<number, any>()
+    for (const id of ids) {
+      let best: any = null
+      for (const r of all) {
+        if (r.question_id !== id) continue
+        if (!best || String(r.last_review) > String(best.last_review)) best = r
+      }
+      if (best) map.set(id, best)
+    }
+    return map
+  },
 }

@@ -86,6 +86,14 @@
       <div v-if="showUpdateLog" class="update-log">
         <h4>更新日志</h4>
         <div class="log-entry">
+          <span class="log-version">v1.2.34</span>
+          <ul>
+            <li>新增「记忆复习」功能：基于遗忘曲线的间隔重复，任何练习模式都自动积累记忆数据（自动评估记忆质量，可手动覆盖为认识/一般/模糊/不认识）</li>
+            <li>首页新增「记忆复习」入口卡片：显示今日待复习题数和记忆健康度，点按直达记忆复习页</li>
+            <li>修复学习计划复习判断：之前备考记录字段命名不符导致复习题永远不触发，现已统一字段并改用 next_review 为准</li>
+          </ul>
+        </div>
+        <div class="log-entry">
           <span class="log-version">v1.2.33</span>
           <ul>
             <li>云同步提速（并发推送 + 增量同步）：本地几千题时同步从十几分钟降到秒级；断网推送不再「假成功」，会明确提示失败条数</li>
@@ -480,7 +488,7 @@ import { ref, onMounted } from 'vue'
 import { api } from '../utils/api'
 import { toastSuccess, toastError } from '../utils/toast'
 
-const currentVersion = ref('1.2.33-web')
+const currentVersion = ref('1.2.34-web')
 const checkingUpdate = ref(false)
 const showUpdateLog = ref(false)
 
@@ -550,7 +558,7 @@ onMounted(async () => {
     console.error('获取数据库信息失败：', e)
     }
     // 读取应用版本（PWA 固定版本号）
-    currentVersion.value = '1.2.33-web'
+    currentVersion.value = '1.2.34-web'
     // 读取云同步配置
     loadCloudConfig()
     // 读取同步昵称

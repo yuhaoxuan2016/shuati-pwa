@@ -134,6 +134,21 @@
         @toggle-favorite="onToggleFavorite"
         @question-updated="onQuestionUpdated"
       />
+      <!-- 2026-08-23：记忆自评标签（自动评估，可点击手动覆盖） -->
+      <div v-if="memoryReviewMap.has(currentQuestion.id)" class="memory-review-bar">
+        <span class="memory-label">🧠 记忆自评</span>
+        <div class="memory-quality-btns">
+          <button
+            v-for="opt in MEMORY_OPTIONS"
+            :key="opt.label"
+            class="memory-quality-btn"
+            :class="{ active: currentMemoryLabel === opt.label }"
+            :title="opt.hint"
+            @click="overrideMemory(opt.label)"
+          >{{ opt.label }}</button>
+        </div>
+        <span class="memory-next" title="下次复习时间">{{ memoryNextText }}</span>
+      </div>
       <!-- 题目导航条 -->
       <div v-if="displayQuestions.length > 1" class="question-nav">
         <div class="nav-header">
@@ -169,6 +184,7 @@ import { useBankStore } from '../stores/bank'
 import { idb } from '../lib/db'
 import QuestionCard, { type QuestionState } from '../components/QuestionCard.vue'
 import { classifyQuestionType } from '../lib/exam'
+import { calculateAutoQuality, calculateNextReview, qualityLabel, labelToQuality, formatDate } from '../lib/spaced-repetition'
 
 interface SavedProgress {
   mode: string
@@ -340,6 +356,8 @@ onMounted(async () => {
     toastError('加载题目失败：' + (e instanceof Error ? e.message : String(e)))
   } finally {
     loaded.value = true
+    // 2026-08-23：进入页面加载记忆标签（已有答题状态的题）
+    loadMemoryReviews()
   }
 })
 
@@ -515,6 +533,8 @@ function onQuestionUpdated(updated: Question) {
 
 watch([current, finished], scheduleSave)
 watch(order, scheduleSave, { deep: true })
+// 2026-08-23：切换题目时刷新记忆标签（自动评估基于已答题状态）
+watch(current, () => { loadMemoryReviews() })
 
 // 组件卸载前立即保存一次，避免导航离开时丢失最后一次进度
 // 全局快捷键处理
@@ -553,24 +573,70 @@ async function onAnswered(payload: { correct: boolean; answer: string; duration_
   } catch (e) {
     console.error('记录练习失败：', e)
   }
-  // 2026-08-22：智能学习计划模式 → 回写复习记录（SM-2）+ 今日完成计数
-  // 修复前：calculateNextReview 无调用方、完成状态无回写 → 计划永远只有新题、进度永远 0
-  if (isPlanMode) {
-    try {
-      await updatePlanReview(q.id, payload.correct)
+  // 2026-08-23：记忆复习全局写入——任何练习模式都更新 SM-2 复习记录（计划模式用同一函数，避免双写冲突）
+  try {
+    await updateMemoryReview(q.id, payload.correct, payload.duration_ms)
+    // 计划模式额外记录今日完成
+    if (isPlanMode) {
       await markPlanCompleted(q.id)
-    } catch (e) {
-      console.error('回写学习计划进度失败：', e)
     }
+  } catch (e) {
+    console.error('更新记忆复习记录失败：', e)
   }
 }
 
-// 计划模式：更新/创建复习记录（间隔重复 SM-2）
-async function updatePlanReview(questionId: number, correct: boolean) {
-  const { calculateNextReview } = await import('../lib/spaced-repetition')
+// 2026-08-23 记忆复习相关状态
+// ============================================================
+// 记忆自评：自动评估（对错+耗时）→ 显示标签 → 可手动覆盖
+// 任何练习模式都写 review_records（此前仅计划模式写）
+// ============================================================
+const MEMORY_OPTIONS = [
+  { label: '认识', q: 5, hint: '熟练，可拉长复习间隔' },
+  { label: '一般', q: 4, hint: '会但不熟' },
+  { label: '模糊', q: 3, hint: '勉强答对/接近' },
+  { label: '不认识', q: 1, hint: '完全不会，须尽快复习' },
+] as const
+
+// 当前题的记忆记录（questionId → review_record 摘要，供标签展示）
+const memoryReviewMap = ref<Map<number, { quality: number; next_review: string | null; interval: number; ease_factor: number }>>(new Map())
+
+const currentMemoryLabel = computed(() => {
+  const rec = memoryReviewMap.value.get(currentQuestion.value?.id)
+  if (!rec) return null
+  return qualityLabel(rec.quality)
+})
+
+const memoryNextText = computed(() => {
+  const rec = memoryReviewMap.value.get(currentQuestion.value?.id)
+  if (!rec || !rec.next_review) return ''
+  const d = new Date(rec.next_review)
+  if (Number.isNaN(d.getTime())) return ''
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const due = new Date(d); due.setHours(0, 0, 0, 0)
+  const diffDays = Math.round((due.getTime() - today.getTime()) / 86400000)
+  if (diffDays <= 0) return '今日已到期'
+  return `${diffDays} 天后复习`
+})
+
+// 手动覆盖记忆质量（写入 SM-2）
+async function overrideMemory(label: '认识' | '一般' | '模糊' | '不认识') {
+  const q = currentQuestion.value
+  if (!q) return
+  try {
+    await updateMemoryReview(q.id, undefined, undefined, labelToQuality(label))
+    toastInfo(`已标记「${label}」`)
+  } catch (e) {
+    toastError('标记失败：' + (e instanceof Error ? e.message : String(e)))
+  }
+}
+
+// 更新单题的 SM-2 复习记录（合并计划模式的 updatePlanReview，全局统一）
+// 参数说明：quality 优先级最高；无 quality 时用自动评估（correct + durationMs 推断）
+async function updateMemoryReview(questionId: number, correct?: boolean, durationMs?: number | null, explicitQuality?: number) {
   const record = await idb.getReviewRecordByQuestionId(questionId)
   const now = new Date()
-  const quality = correct ? 4 : 1
+  // 记忆评估：显式指定 > 自动评估（对错+耗时） > 兜底（对/错 → 4/1）
+  const quality = explicitQuality ?? (correct !== undefined ? calculateAutoQuality(correct, durationMs) : (record?.quality ?? 4))
   const result = calculateNextReview(
     record?.last_review ? new Date(record.last_review) : now,
     quality,
@@ -581,23 +647,56 @@ async function updatePlanReview(questionId: number, correct: boolean) {
   const data = {
     question_id: questionId,
     bank_id: bankId,
-    last_review: result.nextReview,
+    last_review: result.nextReview.toISOString(),
     quality,
     repetitions: result.newRepetitions,
     ease_factor: result.newEaseFactor,
     interval: result.newInterval,
+    next_review: result.nextReview.toISOString(),
   }
   if (record?.id != null) {
     await idb.updateReviewRecord(record.id, data)
   } else {
     await idb.addReviewRecord(data)
   }
+  // 更新本地标签缓存
+  memoryReviewMap.value.set(questionId, { quality, next_review: data.next_review, interval: data.interval, ease_factor: data.ease_factor })
+}
+
+// 加载已答题的记忆记录（进入页面/切换题时刷新标签）——仅带已提交答题状态的题
+async function loadMemoryReviews() {
+  const submittedIds = Array.from(answerStates.value.entries())
+    .filter(([, s]) => s.submitted)
+    .map(([id]) => id)
+  if (!submittedIds.length) return
+  try {
+    const records = await idb.getReviewRecordsByQuestionIds(submittedIds)
+    for (const [id, rec] of records) {
+      memoryReviewMap.value.set(id, {
+        quality: rec.quality,
+        next_review: rec.next_review ?? rec.last_review ?? null,
+        interval: rec.interval ?? 0,
+        ease_factor: rec.ease_factor ?? 2.5,
+      })
+    }
+    // 对新提交但尚无记录的题，用上次答题状态推断（避免标签空白）
+    for (const id of submittedIds) {
+      if (!memoryReviewMap.value.has(id)) {
+        const st = answerStates.value.get(id)
+        if (st) {
+          const qc = calculateAutoQuality(st.isCorrect !== false, st.elapsedSecs ? st.elapsedSecs * 1000 : null)
+          memoryReviewMap.value.set(id, { quality: qc, next_review: null, interval: 0, ease_factor: 2.5 })
+        }
+      }
+    }
+  } catch (e) {
+    console.error('加载记忆复习记录失败：', e)
+  }
 }
 
 // 计划模式：记录今日完成（completed_<planId>_<date>，供 StudyPlanView/首页进度展示）
 async function markPlanCompleted(questionId: number) {
   if (!planId.value) return
-  const { formatDate } = await import('../lib/spaced-repetition')
   const key = `completed_${planId.value}_${formatDate(new Date())}`
   try {
     const raw = localStorage.getItem(key)
@@ -812,6 +911,15 @@ async function restart() {
 .help-tip { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--color-border-light); color: var(--color-text-tertiary); font-size: 12px; }
 
 @keyframes helpFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* 记忆自评栏 */
+.memory-review-bar { margin-top: 12px; padding: 10px 14px; background: var(--color-card); border: 1px dashed var(--color-border); border-radius: var(--radius-md); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.memory-label { font-size: 12px; color: var(--color-text-secondary); font-weight: 600; }
+.memory-quality-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.memory-quality-btn { padding: 4px 12px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-bg); color: var(--color-text-secondary); font-size: 12px; cursor: pointer; transition: all 0.12s; }
+.memory-quality-btn:hover { transform: translateY(-1px); border-color: var(--color-primary); color: var(--color-primary); }
+.memory-quality-btn.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.memory-next { margin-left: auto; font-size: 12px; color: var(--color-text-tertiary); }
 
 /* 题目导航条 */
 .question-nav { margin-top: 18px; padding: 14px 16px; background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-md); }

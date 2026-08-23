@@ -17,6 +17,7 @@ const routes = [
   { path: '/exam/:examId/results', name: 'exam-results', component: () => import('../views/ExamResultsView.vue') },
   { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue') },
   { path: '/study-plan', name: 'study-plan', component: () => import('../views/StudyPlanView.vue') },
+  { path: '/memory-review', name: 'memory-review', component: () => import('../views/MemoryReviewView.vue') },
   // 404 兜底：未知路径回首页（2026-08-15 修复）
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
@@ -33,6 +34,7 @@ const ROUTE_META: Record<string, { title: string; desc: string }> = {
   'public-practice': { title: '练习 - 刷题宝', desc: '公共题库在线练习' },
   'mix-exam': { title: '混合抽题 - 刷题宝', desc: '从多个题库随机抽题练习' },
   'compose-exam': { title: '智能组卷 - 刷题宝', desc: '按等级×题型配额随机组卷 220 题综合大考' },
+  'memory-review': { title: '记忆复习 - 刷题宝', desc: '基于遗忘曲线的间隔重复，自动评估记忆强度，按计划复习' },
 }
 
 router.afterEach((to) => {
