@@ -149,8 +149,8 @@
         <div class="card-header">
           <h3>
             {{ b.name }}
-            <span class="vis-badge" :class="b.visibility === 'private' ? 'private' : 'public'">
-              {{ b.visibility === 'private' ? '🔒' : '🌍' }}
+            <span class="vis-badge" :class="b.visibility === 'private' ? 'private' : (b.visibility === 'pending' ? 'pending' : 'public')">
+              {{ b.visibility === 'private' ? '🔒' : (b.visibility === 'pending' ? '⏳' : '🌍') }}
             </span>
           </h3>
           <button class="more-btn" @click.stop="toggleMenu(b.id)">⋯</button>
@@ -179,6 +179,10 @@
           <button @click="$router.push(`/wrong/${b.id}`)">📕 错题本</button>
           <button @click="$router.push(`/favorites/${b.id}`)">⭐ 收藏夹</button>
           <button @click="$router.push(`/import/${b.id}`)">📥 导入题目</button>
+          <button v-if="b.visibility !== 'public' && b.visibility !== 'pending'" @click="submitForReview(b)">
+            🌍 提交到公共题库（待审核）
+          </button>
+          <button v-else-if="b.visibility === 'pending'" disabled>⏳ 已提交，待管理员审核</button>
           <button @click="exportBank(b)">📤 导出题库</button>
           <button class="danger" @click="del(b.id)">🗑 删除题库</button>
         </div>
@@ -192,18 +196,11 @@
         <input v-model="newCreator" placeholder="创建人（可选，显示在卡片上）" />
         <textarea v-model="newDesc" placeholder="描述（可选）"></textarea>
         <div class="vis-options">
-          <label class="vis-option" :class="{ active: newVisibility === 'public' }" @click="newVisibility = 'public'">
-            <span>🌍</span>
-            <div>
-              <div class="vis-name">公共题库</div>
-              <div class="vis-desc">所有人可见，可基于它出卷/刷题</div>
-            </div>
-          </label>
-          <label class="vis-option" :class="{ active: newVisibility === 'private' }" @click="newVisibility = 'private'">
+          <label class="vis-option active">
             <span>🔒</span>
             <div>
-              <div class="vis-name">自建题库</div>
-              <div class="vis-desc">仅自己可见，私人题库</div>
+              <div class="vis-name">自建题库（私人）</div>
+              <div class="vis-desc">仅自己可见，默认私人。完成导入后可点题库卡片「提交到公共题库」申请公开（需管理员审核）</div>
             </div>
           </label>
         </div>
@@ -245,7 +242,7 @@ const showNew = ref(false)
 const newName = ref('')
 const newDesc = ref('')
 const newCreator = ref('')
-const newVisibility = ref<'public' | 'private'>('public')
+const newVisibility = ref<'public' | 'private' | 'pending'>('private')
 const lastPractice = ref<LastPractice | null>(null)
 const openMenuId = ref<number | null>(null)
 const bankStatsMap = ref<Map<number, Stats>>(new Map())
@@ -573,7 +570,7 @@ async function create() {
     newName.value = ''
     newDesc.value = ''
     newCreator.value = ''
-    newVisibility.value = 'public'
+    newVisibility.value = 'private'
     if (created && created.id) {
       if (confirm('题库创建成功！是否立即导入题目？\n（点"取消"稍后从题库卡片 ⋯ 菜单里导入）')) {
         router.push(`/import/${created.id}`)
@@ -615,6 +612,23 @@ async function exportBank(b: { id: number; name: string }) {
     toastSuccess('导出成功')
   } catch (e) {
     toastError('导出失败：' + (e instanceof Error ? e.message : String(e)))
+  }
+}
+
+// 2026-08-23：提交题库到公共题库审核（visibility=private → pending）
+async function submitForReview(b: { id: number; name: string }) {
+  if (!confirm(`将「${b.name}」提交到公共题库审核？\n提交后需管理员审核通过才会在首页公开展示（审核前仅自己可见）。`)) return
+  openMenuId.value = null
+  try {
+    await api.updateBankVisibility(b.id, 'pending')
+    // 刷新该题库统计（visibility 变化影响展示）
+    const s = await api.bankStats(b.id)
+    bankStatsMap.value.set(b.id, { ...s, accuracy: s.practiced > 0 ? Math.min(100, Math.round((s.correct / s.practiced) * 100)) : 0 })
+    // 刷新题库列表（badge 状态更新）
+    await bankStore.load()
+    toastSuccess('已提交审核，管理员审核通过后将公开')
+  } catch (e) {
+    toastError('提交失败：' + (e instanceof Error ? e.message : String(e)))
   }
 }
 
@@ -728,6 +742,7 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
 .vis-badge { font-size: 11px; margin-left: 6px; }
 .vis-badge.public { color: var(--color-info-deep); }
 .vis-badge.private { color: var(--color-warning-text); }
+.vis-badge.pending { color: var(--color-warning-text); }
 
 .empty { text-align: center; padding: 80px 24px; color: var(--color-text-tertiary); }
 .empty-icon { width: 88px; height: 88px; margin-bottom: 16px; opacity: 0.75; }

@@ -26,7 +26,7 @@ function markCloudDeleted(coll: 'favorites' | 'wrong_questions' | 'mastered_ques
 
 export interface QuizBank {
   id: number; name: string; description: string | null;
-  visibility?: 'public' | 'private';   // 公共题库（所有人可用）/ 自建题库（仅自己）
+  visibility?: 'public' | 'private' | 'pending';   // 公共/自建（私人）/待审核（pending=提交公共审核中）
   creator_name?: string | null;        // 创建人（用户可自定义填写）
   question_count: number; created_at: string; updated_at: string;
 }
@@ -35,7 +35,7 @@ export interface Question {
   options: string | null; answer: string | null; analysis: string | null;
   source_index: number | null; confidence: number;
 }
-export interface NewBank { name: string; description: string | null; visibility?: 'public' | 'private'; creator_name?: string | null }
+export interface NewBank { name: string; description: string | null; visibility?: 'public' | 'private' | 'pending'; creator_name?: string | null }
 
 async function withCount(bank: any): Promise<QuizBank> {
   const qs = await idb.listQuestions(bank.id)
@@ -53,6 +53,18 @@ export const api = {
     const created = await idb.createBank({ ...b, created_at: now, updated_at: now })
     scheduleCloudPush()
     return withCount(created)
+  },
+  // 2026-08-23：提交题库到公共审核（改 visibility=pending）或管理员改可见性。
+  // 标脏（清 synced_at）→ 主动推送云端，让 pending 状态同步上去供管理员审核。
+  async updateBankVisibility(id: number, visibility: 'public' | 'private' | 'pending'): Promise<QuizBank> {
+    const bank = await idb.getBank?.(id)
+    if (!bank) throw new Error('题库不存在')
+    const { cloud_shared, ...rest } = bank // 本地字段，不覆盖
+    const updated = { ...rest, visibility, updated_at: new Date().toISOString(), synced_at: undefined }
+    await idb.updateBank(updated)
+    // 主动推送（把新的 visibility 同步到云端）
+    try { await import('../lib/cloud').then(m => m.pushToCloud()) } catch { /* 推送失败不阻塞 */ }
+    return withCount(updated)
   },
   async deleteBank(id: number): Promise<void> {
     await idb.deleteBank(id)
