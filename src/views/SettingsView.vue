@@ -19,6 +19,16 @@
         </select>
       </label>
       <p class="hint">字号调整界面整体大小，方便不同视力需求</p>
+      <label>主题色</label>
+      <div class="theme-color-row">
+        <button v-for="c in themeColorList" :key="c.id"
+          class="swatch" :class="{ active: themeColor === c.id }"
+          :style="{ background: c.bg, color: c.fg, borderColor: themeColor === c.id ? c.bg : 'transparent' }"
+          @click="setThemeColor(c.id)" :title="c.name">
+          <span v-if="themeColor === c.id" class="swatch-check">✓</span>
+          <span class="swatch-name">{{ c.name }}</span>
+        </button>
+      </div>
     </section>
 
     <section>
@@ -559,6 +569,20 @@ const testing = ref(false)
 const testResult = ref<{ ok: boolean; msg: string } | null>(null)
 const theme = ref('system')
 const fontSize = ref('medium')
+const themeColor = ref('green')
+
+const themeColorList = [
+  { id: 'green',  name: '翠绿', bg: '#42b883', fg: '#fff' },
+  { id: 'blue',   name: '晴蓝', bg: '#3b82f6', fg: '#fff' },
+  { id: 'purple', name: '紫罗兰', bg: '#7c3aed', fg: '#fff' },
+  { id: 'pink',   name: '樱花粉', bg: '#ec4899', fg: '#fff' },
+  { id: 'orange', name: '暖橙', bg: '#f59e0b', fg: '#fff' },
+  { id: 'teal',   name: '湖青', bg: '#14b8a6', fg: '#fff' },
+  { id: 'tech',   name: '科技蓝', bg: '#6366f1', fg: '#fff' },
+  { id: 'forest', name: '森林', bg: '#16a34a', fg: '#fff' },
+  { id: 'space',  name: '太空', bg: '#8b5cf6', fg: '#fff' },
+  { id: 'cloud',  name: '云朵', bg: '#38bdf8', fg: '#fff' },
+]
 const dbInfo = ref<{ path: string; size_bytes: number; backups_dir: string; backup_count: number } | null>(null)
 
 // 云同步
@@ -608,6 +632,7 @@ onMounted(async () => {
     // 读取主题/字号设置
     theme.value = (await api.getSetting('ui_theme')) || 'system'
     fontSize.value = (await api.getSetting('ui_font_size')) || 'medium'
+    themeColor.value = (await api.getSetting('ui_theme_color')) || 'green'
     wrongAutoMaster.value = (await api.getSetting('wrong_auto_master_threshold')) || '3'
     applyTheme()
     applyFontSize()
@@ -737,6 +762,8 @@ function applyTheme() {
   } else {
     html.removeAttribute('data-theme')
   }
+  // 主题色：始终挂属性，默认 green
+  html.setAttribute('data-theme-color', themeColor.value || 'green')
 }
 
 function applyFontSize() {
@@ -751,6 +778,13 @@ async function saveTheme() {
 async function saveFontSize() {
   applyFontSize()
   await api.setSetting('ui_font_size', fontSize.value)
+}
+
+async function setThemeColor(id: string) {
+  themeColor.value = id
+  applyTheme()
+  await api.setSetting('ui_theme_color', id)
+  toastSuccess(`主题色已切换为「${themeColorList.find(c => c.id === id)?.name || id}」`)
 }
 
 async function save(key: string, value: string) {
@@ -1018,24 +1052,24 @@ input, select { padding: 6px; border: 1px solid var(--color-border); border-radi
 .dir-input { flex: 1; padding: 6px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-card); color: var(--color-text); font-size: 13px; }
 
 /* 云同步 */
-.cloud-box { margin-bottom: 14px; padding: 14px 16px; background: linear-gradient(135deg, #f5f3ff 0%, #eef2ff 100%); border: 1px solid #c7d2fe; border-radius: var(--radius-md); }
+.cloud-box { margin-bottom: 14px; padding: 14px 16px; background: linear-gradient(135deg, #f5f3ff 0%, var(--tc-light) 100%); border: 1px solid var(--color-info-strong); border-radius: var(--radius-md); }
 .cloud-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .cloud-title { display: flex; align-items: center; gap: 10px; }
 .cloud-icon { font-size: 26px; }
-.cloud-name { font-weight: 600; font-size: 14px; color: #4338ca; }
-.cloud-desc { font-size: 12px; color: #6366f1; margin-top: 2px; }
+.cloud-name { font-weight: 600; font-size: 14px; color: var(--color-primary-dark); }
+.cloud-desc { font-size: 12px; color: var(--color-info-strong); margin-top: 2px; }
 .switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
 .switch input { opacity: 0; width: 0; height: 0; }
 .slider { position: absolute; cursor: pointer; inset: 0; background: #cbd5e1; border-radius: 24px; transition: 0.3s; }
 .slider:before { content: ""; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: 0.3s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
-.switch input:checked + .slider { background: #4f46e5; }
+.switch input:checked + .slider { background: var(--color-primary); }
 .switch input:checked + .slider:before { transform: translateX(20px); }
 .cloud-config { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(199, 210, 254, 0.7); }
 .cloud-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .cloud-row label { font-size: 13px; color: var(--color-text-secondary); white-space: nowrap; }
 .cloud-row .dir-input { flex: 1; }
 .cloud-actions { display: flex; gap: 8px; }
-.cloud-tip { margin-top: 8px; line-height: 1.6; color: #6366f1; }
+.cloud-tip { margin-top: 8px; line-height: 1.6; color: var(--color-info-strong); }
 .hint.warn { color: var(--color-danger); }
 .hint.warn { color: var(--color-warning); }
 .hint.success { color: var(--color-success); }
@@ -1073,12 +1107,12 @@ input, select { padding: 6px; border: 1px solid var(--color-border); border-radi
 .oss-ai-note {
   margin: 12px 0;
   padding: 12px 14px;
-  background: linear-gradient(135deg, #eef2ff 0%, #faf5ff 100%);
-  border: 1px solid #c7d2fe;
+  background: linear-gradient(135deg, var(--tc-light) 0%, #faf5ff 100%);
+  border: 1px solid var(--color-info-strong);
   border-radius: var(--radius-md);
   font-size: 13px;
   line-height: 1.7;
-  color: #4338ca;
+  color: var(--color-primary-dark);
 }
 
 /* 管理员面板 */
@@ -1109,5 +1143,52 @@ input, select { padding: 6px; border: 1px solid var(--color-border); border-radi
   .cloud-actions .data-btn { flex: 1; }
   .oss-row { flex-direction: column; align-items: flex-start; gap: 4px; }
   .oss-value { text-align: left; }
+}
+
+/* ===== 主题色 swatch ===== */
+.theme-color-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 0;
+}
+.swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  min-width: 72px;
+  padding: 8px 14px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: transform 0.12s, box-shadow 0.12s;
+  position: relative;
+}
+.swatch:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.swatch.active {
+  border-color: currentColor;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+  transform: scale(1.05);
+}
+.swatch-check {
+  font-size: 14px;
+  line-height: 1;
+}
+.swatch-name {
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+@media (max-width: 768px) {
+  .theme-color-row { gap: 8px; }
+  .swatch { min-width: 60px; padding: 6px 10px; }
+  .swatch-name { font-size: 11px; }
 }
 </style>

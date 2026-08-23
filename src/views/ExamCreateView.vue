@@ -441,7 +441,7 @@ h2 { margin: 0 0 4px 0; }
 .pt-input { width: 56px; padding: 5px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 13px; text-align: center; background: var(--color-bg); color: var(--color-text); }
 .pt-subtotal { font-size: 12px; color: var(--color-text-tertiary); margin-left: auto; font-weight: 500; }
 .actions { display: flex; justify-content: flex-end; margin-top: 8px; }
-.submit-btn { padding: 11px 30px; background: linear-gradient(135deg, #7c3aed, #4f46e5); color: #fff; border: none; border-radius: var(--radius-md); font-size: 15px; font-weight: 600; cursor: pointer; }
+.submit-btn { padding: 11px 30px; background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark)); color: #fff; border: none; border-radius: var(--radius-md); font-size: 15px; font-weight: 600; cursor: pointer; }
 .submit-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4); }
 .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .vis-options { display: flex; gap: 10px; }

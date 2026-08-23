@@ -600,8 +600,8 @@ async function loadHeatmap() {
 .wrong-stat { display: flex; justify-content: space-between; align-items: center; min-width: 120px; }
 .wrong-label { font-size: 14px; color: var(--color-text-secondary); }
 .wrong-value { font-size: 18px; font-weight: 600; color: var(--color-text); }
-.wrong-value.success { color: #10B981; }
-.wrong-value.warning { color: #F59E0B; }
+.wrong-value.success { color: var(--color-success-strong); }
+.wrong-value.warning { color: var(--color-warning-strong); }
 
 /* 学习趋势图表 */
 .trend-section { background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); padding: 16px 20px; margin-bottom: 16px; }
@@ -625,8 +625,8 @@ async function loadHeatmap() {
 .heatmap-week { display: flex; flex-direction: column; gap: 3px; }
 .heatmap-cell { width: 12px; height: 12px; border-radius: 2px; background: var(--color-border-light); transition: transform 0.1s; }
 .heatmap-cell:hover { transform: scale(1.4); outline: 1px solid var(--color-primary); }
-.heatmap-cell.today { outline: 1.5px solid #2563eb; outline-offset: 1px; }
-.heatmap-cell.level-0 { background: #ebedf0; }
+.heatmap-cell.today { outline: 1.5px solid var(--color-info-strong); outline-offset: 1px; }
+.heatmap-cell.level-0 { background: var(--color-surface); }
 .heatmap-cell.level-1 { background: #c6e48b; }
 .heatmap-cell.level-2 { background: #7bc96f; }
 .heatmap-cell.level-3 { background: #239a3b; }
@@ -638,7 +638,7 @@ async function loadHeatmap() {
 [data-theme="dark"] .heatmap-cell.level-4 { background: #39d353; }
 .heatmap-legend { display: flex; align-items: center; gap: 4px; margin-top: 12px; font-size: 11px; color: var(--color-text-tertiary); }
 .legend-cell { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
-.legend-cell.level-0 { background: #ebedf0; }
+.legend-cell.level-0 { background: var(--color-surface); }
 .legend-cell.level-1 { background: #c6e48b; }
 .legend-cell.level-2 { background: #7bc96f; }
 .legend-cell.level-3 { background: #239a3b; }

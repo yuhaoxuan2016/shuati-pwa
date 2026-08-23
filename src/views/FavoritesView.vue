@@ -170,21 +170,21 @@ async function clearAll() {
 <style scoped>
 .favorites { max-width: 800px; }
 .toolbar { margin-bottom: 16px; }
-.empty { text-align: center; padding: 48px; color: #999; }
-button { padding: 8px 16px; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; margin-right: 8px; background: #fff; }
-button:hover { background: #f0f0f0; }
-.clear-btn { color: #c0392b; border-color: #c0392b; }
-.clear-btn:hover { background: #fde2e2; }
+.empty { text-align: center; padding: 48px; color: var(--color-text-tertiary); }
+button { padding: 8px 16px; border: 1px solid var(--color-border); border-radius: 6px; cursor: pointer; margin-right: 8px; background: var(--color-card); }
+button:hover { background: var(--color-border-light); }
+.clear-btn { color: var(--color-danger); border-color: var(--color-danger); }
+.clear-btn:hover { background: var(--color-danger-light); }
 
 .fav-list { display: flex; flex-direction: column; gap: 8px; }
-.fav-item { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #eee; border-radius: 6px; padding: 10px 12px; }
-.fav-item:hover { border-color: #f5a623; background: #fffdf5; }
+.fav-item { display: flex; align-items: center; gap: 8px; background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: 6px; padding: 10px 12px; }
+.fav-item:hover { border-color: var(--color-warning-strong); background: var(--color-warning-light); }
 .fav-main { flex: 1; cursor: pointer; display: flex; align-items: center; gap: 8px; min-width: 0; }
-.fav-idx { font-weight: bold; color: #888; flex-shrink: 0; }
-.type-tag { background: #eee; padding: 2px 8px; border-radius: 4px; font-size: 12px; flex-shrink: 0; }
-.fav-stem { color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.remove-btn { flex-shrink: 0; width: 28px; height: 28px; border: 1px solid #ddd; border-radius: 50%; background: #fff; cursor: pointer; font-size: 16px; line-height: 1; color: #999; padding: 0; margin: 0; }
-.remove-btn:hover { background: #fde2e2; color: #c0392b; border-color: #c0392b; }
+.fav-idx { font-weight: bold; color: var(--color-text-tertiary); flex-shrink: 0; }
+.type-tag { background: var(--color-border-light); padding: 2px 8px; border-radius: 4px; font-size: 12px; flex-shrink: 0; }
+.fav-stem { color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remove-btn { flex-shrink: 0; width: 28px; height: 28px; border: 1px solid var(--color-border); border-radius: 50%; background: var(--color-card); cursor: pointer; font-size: 16px; line-height: 1; color: var(--color-text-tertiary); padding: 0; margin: 0; }
+.remove-btn:hover { background: var(--color-danger-light); color: var(--color-danger); border-color: var(--color-danger); }
 
 /* 移动端适配 */
 @media (max-width: 768px) {

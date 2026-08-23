@@ -407,7 +407,7 @@ onMounted(async () => {
 .main-progress { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 140px; }
 .progress-text { font-size: 12px; color: var(--color-text-secondary); font-family: monospace; white-space: nowrap; }
 .progress-track { flex: 1; height: 6px; background: var(--color-border-light); border-radius: 3px; overflow: hidden; }
-.progress-fill { height: 100%; background: linear-gradient(90deg, #7c3aed, #4f46e5); border-radius: 3px; transition: width 0.3s; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--color-primary), var(--color-primary-dark)); border-radius: 3px; transition: width 0.3s; }
 .mode-select { padding: 6px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-card); color: var(--color-text); font-size: 13px; }
 .shuffle-toggle { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--color-text-secondary); cursor: pointer; white-space: nowrap; }
 .shuffle-toggle input { accent-color: var(--color-primary); }
@@ -439,7 +439,7 @@ onMounted(async () => {
 .dot-nav { display: flex; flex-wrap: wrap; gap: 5px; padding: 14px; background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-md); }
 .dot { min-width: 30px; height: 30px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-card); color: var(--color-text-secondary); font-size: 12px; cursor: pointer; }
 .dot.answered { background: var(--color-primary-light); border-color: var(--color-primary); color: var(--color-primary); }
-.dot.current { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+.dot.current { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
 .dot.correct { background: #dcfce7; border-color: #16a34a; color: #15803d; }
 .dot.wrong { background: #fee2e2; border-color: #dc2626; color: #b91c1c; }
 

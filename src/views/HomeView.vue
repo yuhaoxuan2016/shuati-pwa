@@ -66,7 +66,7 @@
     <!-- 记忆复习入口（2026-08-23 新增） -->
     <div v-if="memoryDueCount >= 0" class="memory-entry-card" @click="$router.push('/memory-review')">
       <div class="me-left">
-        <span class="me-icon">🧠</span>
+        <img src="/icons/study.gif" class="me-icon-img" alt="记忆复习" />
         <div>
           <div class="me-title">记忆复习</div>
           <div class="me-sub" v-if="memoryDueCount > 0">今日建议复习 <b>{{ memoryDueCount }}</b> 题<template v-if="memoryDeferredCount > 0"> · <span class="me-fast">{{ memoryDeferredCount }} 题顺延</span></template> · 健康度 {{ memoryHealth }}%</div>
@@ -621,7 +621,7 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
 .visit-bar b { color: var(--color-primary); font-weight: 600; }
 
 /* 每日一诗卡 */
-.poem-card { margin-bottom: 16px; padding: 14px 16px; background: linear-gradient(135deg, #f7f9fc 0%, #f0f4fa 100%); border: 1px solid var(--color-border, #eee); border-left: 3px solid var(--color-primary); border-radius: var(--radius-md); }
+.poem-card { margin-bottom: 16px; padding: 14px 16px; background: linear-gradient(135deg, var(--color-surface) 0%, var(--color-surface) 100%); border: 1px solid var(--color-border, #eee); border-left: 3px solid var(--color-primary); border-radius: var(--radius-md); }
 .poem-head { font-size: 12px; color: var(--color-primary); font-weight: 600; margin-bottom: 8px; letter-spacing: 0.5px; }
 .poem-content { font-size: 15px; line-height: 1.8; color: var(--color-text); white-space: pre-line; letter-spacing: 0.5px; }
 .poem-meta { margin-top: 8px; font-size: 12px; color: var(--color-text-secondary); text-align: right; }
@@ -631,9 +631,9 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
 .header-btns { display: flex; gap: 8px; align-items: center; }
 .btn-icon { width: 18px; height: 18px; vertical-align: -3px; margin-right: 4px; }
 .exam-btn, .mix-exam-btn { display: inline-flex; align-items: center; justify-content: center; }
-.exam-btn { padding: 9px 18px; background: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%); color: #fff; border: none; border-radius: var(--radius-md); font-size: 14px; cursor: pointer; font-weight: 500; transition: background 0.15s, transform 0.1s; white-space: nowrap; box-shadow: 0 2px 6px rgba(245, 158, 11, 0.3); }
+.exam-btn { padding: 9px 18px; background: linear-gradient(135deg, var(--color-warning-strong) 0%, var(--color-warning-deep) 100%); color: #fff; border: none; border-radius: var(--radius-md); font-size: 14px; cursor: pointer; font-weight: 500; transition: background 0.15s, transform 0.1s; white-space: nowrap; box-shadow: 0 2px 6px rgba(245, 158, 11, 0.3); }
 .exam-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4); }
-.mix-exam-btn { padding: 9px 18px; background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%); color: #fff; border: none; border-radius: var(--radius-md); font-size: 14px; cursor: pointer; font-weight: 500; transition: background 0.15s, transform 0.1s; white-space: nowrap; box-shadow: 0 2px 6px rgba(79, 70, 229, 0.3); }
+.mix-exam-btn { padding: 9px 18px; background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%); color: #fff; border: none; border-radius: var(--radius-md); font-size: 14px; cursor: pointer; font-weight: 500; transition: background 0.15s, transform 0.1s; white-space: nowrap; box-shadow: 0 2px 6px rgba(79, 70, 229, 0.3); }
 .mix-exam-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4); }
 
 /* 每日激励卡 */
@@ -644,21 +644,21 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
   gap: 16px;
   padding: 16px 20px;
   margin-bottom: 16px;
-  background: linear-gradient(135deg, #fff7ed 0%, #fef3c7 100%);
-  border: 1px solid #fde68a;
+  background: linear-gradient(135deg, var(--color-warning-light) 0%, var(--color-warning-bg) 100%);
+  border: 1px solid var(--color-warning-light);
   border-radius: var(--radius-lg);
   box-shadow: 0 2px 6px rgba(245, 158, 11, 0.08);
 }
 .daily-left { display: flex; align-items: center; gap: 14px; }
 .daily-icon { width: 40px; height: 40px; }
-.daily-title { font-size: 16px; color: #92400e; font-weight: 600; }
-.daily-title b { color: #c2410c; font-size: 18px; }
-.daily-sub { font-size: 13px; color: #b45309; margin-top: 4px; }
-.daily-sub b { color: #c2410c; }
+.daily-title { font-size: 16px; color: var(--color-warning-deep); font-weight: 600; }
+.daily-title b { color: var(--color-warning-deep); font-size: 18px; }
+.daily-sub { font-size: 13px; color: var(--color-warning-text); margin-top: 4px; }
+.daily-sub b { color: var(--color-warning-deep); }
 .daily-progress { min-width: 160px; }
 .daily-progress-bar { height: 6px; background: rgba(146, 64, 14, 0.15); border-radius: 3px; overflow: hidden; }
-.daily-progress-fill { height: 100%; background: linear-gradient(90deg, #f59e0b, #f97316); border-radius: 3px; transition: width 0.4s; }
-.daily-progress-label { font-size: 11px; color: #b45309; margin-top: 4px; text-align: right; }
+.daily-progress-fill { height: 100%; background: linear-gradient(90deg, var(--color-warning-strong), var(--color-warning-strong)); border-radius: 3px; transition: width 0.4s; }
+.daily-progress-label { font-size: 11px; color: var(--color-warning-text); margin-top: 4px; text-align: right; }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
 .card { position: relative; border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 18px; background: var(--color-card); transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s; cursor: default; display: flex; flex-direction: column; }
@@ -676,10 +676,10 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
   font-size: 12px; font-weight: 500;
 }
 .count-pill { background: var(--color-primary-light); color: var(--color-primary); }
-.accuracy-pill { background: #dcfce7; color: #15803d; }
-.creator-pill { background: #f3e8ff; color: #7c3aed; }
-.accuracy-pill.mid { background: #fef3c7; color: #b45309; }
-.accuracy-pill.low { background: #fee2e2; color: #b91c1c; }
+.accuracy-pill { background: var(--color-success-bg); color: var(--color-success-deep); }
+.creator-pill { background: var(--tc-light); color: var(--color-primary); }
+.accuracy-pill.mid { background: var(--color-warning-bg); color: var(--color-warning-text); }
+.accuracy-pill.low { background: var(--color-danger-bg); color: var(--color-danger-deep); }
 
 .progress-row { margin-bottom: 14px; }
 .progress-bar { height: 6px; background: var(--color-border-light); border-radius: 3px; overflow: hidden; }
@@ -713,8 +713,8 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
 .vis-name { font-size: 13px; font-weight: 600; color: var(--color-text); }
 .vis-desc { font-size: 11px; color: var(--color-text-tertiary); }
 .vis-badge { font-size: 11px; margin-left: 6px; }
-.vis-badge.public { color: #1d4ed8; }
-.vis-badge.private { color: #b45309; }
+.vis-badge.public { color: var(--color-info-deep); }
+.vis-badge.private { color: var(--color-warning-text); }
 
 .empty { text-align: center; padding: 80px 24px; color: var(--color-text-tertiary); }
 .empty-icon { width: 88px; height: 88px; margin-bottom: 16px; opacity: 0.75; }
@@ -730,7 +730,7 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
   justify-content: space-between;
   padding: 16px 20px;
   margin-bottom: 18px;
-  background: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%);
+  background: linear-gradient(135deg, var(--color-warning-strong) 0%, var(--color-warning-deep) 100%);
   color: #fff;
   border-radius: var(--radius-lg);
   cursor: pointer;
@@ -757,7 +757,7 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
 .import-btn { width: 100%; margin-top: 8px; padding: 8px 12px; border: 1px dashed var(--color-primary); border-radius: var(--radius-md); background: var(--color-primary-light); color: var(--color-primary); cursor: pointer; font-size: 13px; font-weight: 500; transition: background 0.15s, transform 0.1s; }
 .import-btn:hover:not(:disabled) { background: var(--color-primary); color: #fff; transform: translateY(-1px); }
 .import-btn:disabled { cursor: default; opacity: 0.7; }
-.imported-tag { margin-top: 8px; font-size: 12px; color: #15803d; background: #dcfce7; padding: 4px 10px; border-radius: 12px; text-align: center; }
+.imported-tag { margin-top: 8px; font-size: 12px; color: var(--color-success-deep); background: var(--color-success-bg); padding: 4px 10px; border-radius: 12px; text-align: center; }
 .import-progress { margin-top: 8px; }
 .import-bar { height: 6px; background: var(--color-border-light); border-radius: 3px; overflow: hidden; }
 .import-fill { height: 100%; background: linear-gradient(90deg, var(--color-primary), var(--color-primary-dark)); border-radius: 3px; transition: width 0.2s; }
@@ -801,10 +801,10 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
 .sp-arrow { font-size: 32px; line-height: 1; opacity: 0.8; }
 
 /* 记忆复习入口卡片（2026-08-23） */
-.memory-entry-card { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; margin-bottom: 16px; background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); color: #fff; border-radius: var(--radius-xl); cursor: pointer; box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3); transition: transform 0.15s, box-shadow 0.15s; }
+.memory-entry-card { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; margin-bottom: 16px; background: linear-gradient(135deg, var(--color-primary) 0%, var(--tc-strong) 100%); color: #fff; border-radius: var(--radius-xl); cursor: pointer; box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3); transition: transform 0.15s, box-shadow 0.15s; }
 .memory-entry-card:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(124, 58, 237, 0.4); }
 .me-left { display: flex; align-items: center; gap: 12px; }
-.me-icon { font-size: 30px; line-height: 1; }
+.me-icon-img { width: 38px; height: 38px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
 .me-title { font-size: 18px; font-weight: bold; }
 .me-sub { font-size: 13px; opacity: 0.9; margin-top: 4px; }
 .me-sub b { color: #fde68a; }

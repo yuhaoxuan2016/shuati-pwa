@@ -159,17 +159,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   border-radius: 12px;
   border: 1px solid var(--color-border);
   overflow: hidden;
-  background: #fff;
+  background: var(--color-card);
   display: flex; align-items: center; justify-content: center;
 }
 .qr-img img { width: 100%; height: 100%; object-fit: contain; }
 .qr-placeholder {
   display: flex; flex-direction: column; align-items: center;
-  color: #999; font-size: 13px; text-align: center;
+  color: var(--color-text-tertiary); font-size: 13px; text-align: center;
   padding: 12px;
 }
-.qr-placeholder span { font-weight: 500; color: #666; margin-bottom: 6px; }
-.qr-placeholder small { font-size: 11px; line-height: 1.4; color: #aaa; }
+.qr-placeholder span { font-weight: 500; color: var(--color-text-secondary); margin-bottom: 6px; }
+.qr-placeholder small { font-size: 11px; line-height: 1.4; color: var(--color-text-tertiary); }
 .qr-label {
   margin-top: 8px;
   font-size: 14px;

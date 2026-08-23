@@ -134,7 +134,7 @@ async function remove(id: string) {
 .header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; gap: 16px; }
 .header h2 { margin: 0 0 4px 0; }
 .header-sub { font-size: 13px; color: var(--color-text-secondary); margin: 0; }
-.create-btn { padding: 9px 18px; background: linear-gradient(135deg, #7c3aed, #4f46e5); color: #fff; border: none; border-radius: var(--radius-md); font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.create-btn { padding: 9px 18px; background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark)); color: #fff; border: none; border-radius: var(--radius-md); font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; }
 .create-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3); }
 .tabs { display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--color-border); }
 .tab { padding: 8px 16px; border: none; background: none; cursor: pointer; font-size: 14px; color: var(--color-text-tertiary); border-bottom: 2px solid transparent; transition: all 0.15s; }
@@ -148,26 +148,26 @@ async function remove(id: string) {
 .card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
 .card-title { font-weight: 600; font-size: 16px; word-break: break-all; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .vis-badge { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
-.vis-badge.public { background: #dbeafe; color: #1d4ed8; }
-.vis-badge.private { background: #fef3c7; color: #b45309; }
+.vis-badge.public { background: var(--color-info-bg); color: var(--color-info-deep); }
+.vis-badge.private { background: var(--color-warning-bg); color: var(--color-warning-text); }
 .status-badge { padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; flex-shrink: 0; }
-.status-badge.published { background: #dcfce7; color: #15803d; }
-.status-badge.closed { background: #fee2e2; color: #b91c1c; }
-.status-badge.draft { background: #e2e8f0; color: #475569; }
+.status-badge.published { background: var(--color-success-bg); color: var(--color-success-deep); }
+.status-badge.closed { background: var(--color-danger-bg); color: var(--color-danger-deep); }
+.status-badge.draft { background: var(--color-border-light); color: var(--color-text-secondary); }
 .card-desc { font-size: 13px; color: var(--color-text-secondary); margin: 0 0 10px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .card-meta { display: flex; gap: 12px; font-size: 12px; color: var(--color-text-tertiary); margin-bottom: 14px; flex-wrap: wrap; }
 .card-meta .expired { color: var(--color-danger); font-weight: 600; }
 .card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .act-btn { padding: 6px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-card); cursor: pointer; font-size: 13px; color: var(--color-text); }
 .act-btn:hover { background: var(--color-border-light); }
-.act-btn.primary { background: #4f46e5; color: #fff; border-color: #4f46e5; }
-.act-btn.primary:hover { background: #4338ca; }
+.act-btn.primary { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.act-btn.primary:hover { background: var(--color-primary-dark); }
 .act-btn.danger { color: var(--color-danger); border-color: var(--color-danger); }
 .loading, .empty { text-align: center; padding: 60px 24px; color: var(--color-text-tertiary); }
 .empty-icon { font-size: 64px; margin-bottom: 12px; opacity: 0.5; }
 .empty-title { font-size: 18px; color: var(--color-text-secondary); margin: 0 0 8px 0; }
 .empty-tip { font-size: 14px; margin: 0 0 18px 0; }
-.empty-action { padding: 10px 24px; background: linear-gradient(135deg, #7c3aed, #4f46e5); color: #fff; border: none; border-radius: var(--radius-md); font-size: 14px; cursor: pointer; }
+.empty-action { padding: 10px 24px; background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark)); color: #fff; border: none; border-radius: var(--radius-md); font-size: 14px; cursor: pointer; }
 
 /* 移动端适配 */
 @media (max-width: 768px) {

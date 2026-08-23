@@ -126,11 +126,11 @@ function formatTime(iso: string) {
 .header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
 .header h2 { margin: 0 0 4px 0; }
 .sub { font-size: 13px; color: var(--color-text-secondary); margin: 0; }
-.copy-btn { padding: 8px 18px; background: #4f46e5; color: #fff; border: none; border-radius: var(--radius-md); font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
-.copy-btn:hover { background: #4338ca; }
+.copy-btn { padding: 8px 18px; background: var(--color-primary); color: #fff; border: none; border-radius: var(--radius-md); font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.copy-btn:hover { background: var(--color-primary-dark); }
 .summary { display: flex; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
 .sum-card { flex: 1; min-width: 110px; padding: 14px; background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-md); text-align: center; }
-.sum-num { font-size: 26px; font-weight: 700; color: #4f46e5; }
+.sum-num { font-size: 26px; font-weight: 700; color: var(--color-primary); }
 .sum-label { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; }
 .table-wrap { overflow-x: auto; background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); }
 .score-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
@@ -139,14 +139,14 @@ function formatTime(iso: string) {
 .score-table tr:last-child td { border-bottom: none; }
 .score-table tr:hover td { background: var(--color-primary-light); }
 .rank { font-weight: 600; color: var(--color-text-tertiary); }
-.rank.top { color: #f59e0b; }
+.rank.top { color: var(--color-warning-strong); }
 .name { font-weight: 600; }
 .score { font-weight: 700; font-size: 15px; }
-.score.high { color: #16a34a; }
-.score.mid { color: #d97706; }
-.score.low { color: #dc2626; }
-.good { color: #16a34a; }
-.bad { color: #dc2626; }
+.score.high { color: var(--color-success-strong); }
+.score.mid { color: var(--color-warning-deep); }
+.score.low { color: var(--color-danger-strong); }
+.good { color: var(--color-success-strong); }
+.bad { color: var(--color-danger-strong); }
 .center { text-align: center; padding: 60px 24px; color: var(--color-text-tertiary); }
 .empty-icon { font-size: 56px; margin-bottom: 12px; opacity: 0.5; }
 .empty-results p { margin: 4px 0; }

@@ -418,8 +418,8 @@ button:hover { background: var(--color-border-light); }
 .item-index { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--color-danger-light); color: var(--color-danger); font-size: 13px; font-weight: 600; flex-shrink: 0; }
 .item-preview { flex: 1; font-size: 14px; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 2026-08-19：连续答对计数徽标 */
-.streak-tag { padding: 2px 8px; border-radius: 10px; background: var(--color-success-light); color: #15803d; font-size: 11px; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
-.streak-tag.near { background: #fef3c7; color: #b45309; }
+.streak-tag { padding: 2px 8px; border-radius: 10px; background: var(--color-success-light); color: var(--color-success-deep); font-size: 11px; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+.streak-tag.near { background: var(--color-warning-bg); color: var(--color-warning-text); }
 .quick-master-btn { padding: 4px 10px; border: 1px solid var(--color-success); border-radius: var(--radius-sm); background: var(--color-success-light); color: var(--color-success); cursor: pointer; font-size: 12px; white-space: nowrap; flex-shrink: 0; opacity: 0; transition: opacity 0.15s; }
 .wrong-item:hover .quick-master-btn, .wrong-item.active .quick-master-btn { opacity: 1; }
 .quick-master-btn:hover { background: var(--color-success); color: #fff; }

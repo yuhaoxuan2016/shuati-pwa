@@ -76,7 +76,7 @@
       <button v-if="isPdfImporting" class="cancel-btn" @click="cancelPdfImport" :disabled="cancelling">{{ cancelling ? '取消中...' : '取消 PDF 导入' }}</button>
     </div>
 
-    <div class="step" v-if="step === 2 && importWarning" style="border-color: #f56c6c;">
+    <div class="step" v-if="step === 2 && importWarning" style="border-color: var(--color-danger-strong);">
       <p class="warning-text">{{ importWarning }}</p>
     </div>
 

@@ -129,19 +129,19 @@ onBeforeUnmount(() => {
   background: var(--color-card, #fff);
   border-radius: var(--radius-md, 6px);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
-  border-left: 4px solid #6a8dff;
+  border-left: 4px solid var(--color-info-strong);
   font-size: 14px;
   color: var(--color-text, #0f0f0f);
   line-height: 1.5;
 }
-.toast-success { border-left-color: #16a34a; }
-.toast-success .toast-icon { color: #16a34a; }
-.toast-error { border-left-color: #dc2626; }
-.toast-error .toast-icon { color: #dc2626; }
-.toast-warning { border-left-color: #f59e0b; }
-.toast-warning .toast-icon { color: #f59e0b; }
-.toast-info { border-left-color: #6a8dff; }
-.toast-info .toast-icon { color: #6a8dff; }
+.toast-success { border-left-color: var(--color-success-strong); }
+.toast-success .toast-icon { color: var(--color-success-strong); }
+.toast-error { border-left-color: var(--color-danger-strong); }
+.toast-error .toast-icon { color: var(--color-danger-strong); }
+.toast-warning { border-left-color: var(--color-warning-strong); }
+.toast-warning .toast-icon { color: var(--color-warning-strong); }
+.toast-info { border-left-color: var(--color-info-strong); }
+.toast-info .toast-icon { color: var(--color-info-strong); }
 .toast-icon {
   font-weight: 700;
   font-size: 16px;
@@ -169,13 +169,13 @@ onBeforeUnmount(() => {
 }
 .toast-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #6a8dff, #8b5cf6);
+  background: linear-gradient(90deg, var(--color-info-strong), #8b5cf6);
   border-radius: 2px;
   transition: width 0.3s ease;
 }
-.toast-success .toast-progress-fill { background: linear-gradient(90deg, #16a34a, #22c55e); }
-.toast-error .toast-progress-fill { background: linear-gradient(90deg, #dc2626, #ef4444); }
-.toast-warning .toast-progress-fill { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.toast-success .toast-progress-fill { background: linear-gradient(90deg, var(--color-success-strong), var(--color-success-strong)); }
+.toast-error .toast-progress-fill { background: linear-gradient(90deg, var(--color-danger-strong), var(--color-danger-strong)); }
+.toast-warning .toast-progress-fill { background: linear-gradient(90deg, var(--color-warning-strong), var(--color-warning-strong)); }
 
 .toast-enter-from { opacity: 0; transform: translateX(20px); }
 .toast-enter-active { transition: all 0.25s ease; }

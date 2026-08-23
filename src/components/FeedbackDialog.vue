@@ -366,7 +366,7 @@ function close() {
   margin-bottom: 6px;
 }
 .required {
-  color: #ef4444;
+  color: var(--color-danger-strong);
 }
 .text-input {
   width: 100%;
@@ -382,7 +382,7 @@ function close() {
 }
 .text-input:focus {
   outline: none;
-  border-color: #2563eb;
+  border-color: var(--color-info-strong);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 textarea.text-input {
@@ -414,12 +414,12 @@ textarea.text-input {
   transition: all 0.15s;
 }
 .cat-btn:hover {
-  border-color: #2563eb;
+  border-color: var(--color-info-strong);
 }
 .cat-btn.active {
-  background: #2563eb;
+  background: var(--color-info-strong);
   color: #fff;
-  border-color: #2563eb;
+  border-color: var(--color-info-strong);
 }
 .checkbox-label {
   display: flex !important;
@@ -471,16 +471,16 @@ textarea.text-input {
 }
 .result.ok {
   background: rgba(34, 197, 94, 0.1);
-  color: #16a34a;
+  color: var(--color-success-strong);
   border: 1px solid rgba(34, 197, 94, 0.3);
 }
 .result.fail {
   background: rgba(239, 68, 68, 0.1);
-  color: #dc2626;
+  color: var(--color-danger-strong);
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 .btn-primary {
-  background: #2563eb;
+  background: var(--color-info-strong);
   color: #fff;
   border: none;
   padding: 8px 16px;
@@ -490,10 +490,11 @@ textarea.text-input {
   font-weight: 500;
 }
 .btn-primary:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: var(--color-info-deep);
 }
 .btn-primary:disabled {
-  background: #93c5fd;
+  background: var(--color-info-strong);
+  opacity: 0.5;
   cursor: not-allowed;
 }
 .btn-secondary {
