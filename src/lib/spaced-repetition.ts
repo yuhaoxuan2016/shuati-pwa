@@ -258,3 +258,47 @@ export function labelToQuality(label: '认识' | '一般' | '模糊' | '不认�
     default: return 3
   }
 }
+
+// ============================================================
+// 2026-08-23 新增：防堆积机制（每日复习配额 + 逾期重学）
+// 解决「墨墨背单词式」长时间不练 → 一次性涌出大量到期题的问题
+// ============================================================
+
+/**
+ * 每日复习配额基准（默认值）：没有学习计划时每天最多复习这么多题
+ */
+export const DEFAULT_DAILY_REVIEW_CAP = 50
+
+/**
+ * 计算每日复习配额（防堆积）
+ * 规则：
+ *  - 若设置了一个或多个学习计划 → 取「计划每日目标」中的最大值（保证不少干计划要求）
+ *  - 否则 → 用默认 50 题/天
+ * 最终配额 = max(计划目标, 默认 50)，既联动计划又不低于保底。
+ *
+ * @param plans 学习计划数组（StudyPlan[]，可为空）
+ * @returns 每日复习配额
+ */
+export function calculateDailyReviewCap(plans: { dailyGoal: number }[]): number {
+  let cap = DEFAULT_DAILY_REVIEW_CAP
+  if (plans && plans.length > 0) {
+    const maxGoal = Math.max(...plans.map(p => p.dailyGoal || 0))
+    cap = Math.max(maxGoal, DEFAULT_DAILY_REVIEW_CAP)
+  }
+  return cap
+}
+
+/**
+ * 判断某题是否已「逾期过久，需要重新学习」
+ * 超过 staleDays 天没复习 → 视为生疏，重新从短间隔开始（不留痛苦长尾）
+ *
+ * @param lastReview 上次复习时间（ISO string 或 null）
+ * @param staleDays 逾期天数阈值（默认 30）
+ */
+export function isStaleReview(lastReview: string | null | undefined, staleDays = 30): boolean {
+  if (!lastReview) return false
+  const t = new Date(lastReview).getTime()
+  if (Number.isNaN(t)) return false
+  const elapsedDays = (Date.now() - t) / 86400000
+  return elapsedDays > staleDays
+}

@@ -73,10 +73,13 @@
 
       <!-- 待复习列表 -->
       <template v-else>
-        <div class="due-section" v-if="dueList.length">
+        <div class="due-section" v-if="dueList.length || deferredCount > 0">
           <div class="due-head">
-            <span class="due-title">📅 今日待复习（{{ dueList.length }}）</span>
-            <button class="start-btn" @click="startPractice">开始复习</button>
+            <span class="due-title">📅 今日待复习
+              <span class="due-cap">（建议 {{ todayCap }} 题）</span>
+              <span v-if="deferredCount > 0" class="deferred-tag">另有 {{ deferredCount }} 题顺延</span>
+            </span>
+            <button class="start-btn" v-if="dueList.length" @click="startPractice">开始复习</button>
           </div>
           <ul class="due-list">
             <li
@@ -86,10 +89,12 @@
               :class="strengthClass(item.strength)"
             >
               <span class="due-strength">{{ item.level }}</span>
+              <span v-if="item.stale" class="stale-tag">重新学</span>
               <span class="due-text">{{ item.question.stem }}</span>
               <span class="due-meta">{{ item.bankName }} · {{ item.sinceText }}</span>
             </li>
           </ul>
+          <p v-if="deferredCount > 0" class="deferred-hint">为保持每天轻量复习，超出「今日建议 {{ todayCap }} 题」的部分已顺延到后面几天，不会堆积。</p>
         </div>
 
         <div v-else class="empty-state">
@@ -142,6 +147,9 @@ import {
   strengthLevel,
   qualityLabel,
   labelToQuality,
+  calculateDailyReviewCap,
+  isStaleReview,
+  DEFAULT_DAILY_REVIEW_CAP,
 } from '../lib/spaced-repetition'
 
 const router = useRouter()
@@ -193,6 +201,9 @@ async function loadData() {
         reviews.value.set(r.question_id, r)
       }
     }
+    // 2026-08-23 防堆积：每日复习配额联动学习计划
+    const plans = await idb.listPlans()
+    todayCap.value = calculateDailyReviewCap(plans)
     loaded.value = true
   } catch (e) {
     console.error('加载记忆复习数据失败：', e)
@@ -255,8 +266,15 @@ const todayEnd = computed(() => {
   d.setHours(23, 59, 59, 999)
   return d.getTime()
 })
-const dueList = computed(() => {
-  const list: { question: Question; strength: number; level: string; bankName: string; sinceText: string }[] = []
+
+// 2026-08-23 防堆积：每日复习配额（联动学习计划，至少有 50 题保底）
+const todayCap = ref(DEFAULT_DAILY_REVIEW_CAP)
+// 顺延数量（超出配额的部分）
+const deferredCount = computed(() => Math.max(0, allDueCount.value - todayCap.value))
+
+// 全量到期（未截断，用于统计顺延数）
+const allDueList = computed(() => {
+  const list: { question: Question; strength: number; level: string; bankName: string; sinceText: string; stale: boolean }[] = []
   for (const q of questions.value) {
     const r = reviews.value.get(q.id)
     if (!r) continue
@@ -270,12 +288,17 @@ const dueList = computed(() => {
         level: strengthLevel(strength),
         bankName: bankNameMap.value.get(q.bank_id) || '未知题库',
         sinceText: sinceText(r),
+        stale: isStaleReview(r.last_review),
       })
     }
   }
-  // 记忆越弱越靠前
+  // 记忆越弱越靠前（逾期重学的最优先，避免痛苦长尾）
   return list.sort((a, b) => a.strength - b.strength)
 })
+const allDueCount = computed(() => allDueList.value.length)
+
+// 今日份（按配额截断，防堆积）
+const dueList = computed(() => allDueList.value.slice(0, todayCap.value))
 const dueCount = computed(() => dueList.value.length)
 
 // 记忆薄弱（中/弱，且当前不碍事也列出来做重点）
@@ -450,7 +473,11 @@ async function onToggleFavorite() {
 /* 待复习 */
 .due-section { margin-bottom: 24px; }
 .due-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
-.due-title { font-size: 16px; font-weight: 600; color: var(--color-text); }
+.due-title { font-size: 16px; font-weight: 600; color: var(--color-text); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.due-cap { font-size: 12px; font-weight: 400; color: var(--color-text-tertiary); }
+.deferred-tag { font-size: 11px; font-weight: 500; color: #b45309; background: #fef3c7; padding: 2px 8px; border-radius: 10px; }
+.deferred-hint { font-size: 12px; color: var(--color-text-tertiary); margin-top: 8px; }
+.stale-tag { flex-shrink: 0; font-size: 11px; font-weight: 600; color: #b45309; background: #fef3c7; padding: 2px 8px; border-radius: 10px; border: 1px solid #fde68a; }
 .start-btn { padding: 8px 20px; background: var(--color-primary); color: #fff; border: none; border-radius: var(--radius-md); cursor: pointer; font-size: 14px; font-weight: 500; }
 .start-btn:hover { background: var(--color-primary-dark); }
 .due-list { list-style: none; padding: 0; margin: 0; }

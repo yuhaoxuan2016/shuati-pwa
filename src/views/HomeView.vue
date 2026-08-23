@@ -69,7 +69,7 @@
         <span class="me-icon">🧠</span>
         <div>
           <div class="me-title">记忆复习</div>
-          <div class="me-sub" v-if="memoryDueCount > 0">今日待复习 <b>{{ memoryDueCount }}</b> 题 · 记忆健康度 {{ memoryHealth }}%</div>
+          <div class="me-sub" v-if="memoryDueCount > 0">今日建议复习 <b>{{ memoryDueCount }}</b> 题<template v-if="memoryDeferredCount > 0"> · <span class="me-fast">{{ memoryDeferredCount }} 题顺延</span></template> · 健康度 {{ memoryHealth }}%</div>
           <div class="me-sub" v-else>今日无待复习，去刷题积累记忆</div>
         </div>
       </div>
@@ -262,6 +262,8 @@ const todayProgress = ref(0)
 // 2026-08-23：记忆复习入口数据（今日待复习数 + 记忆健康度）；初始 -1 表示未加载
 const memoryDueCount = ref(-1)
 const memoryHealth = ref(0)
+// 2026-08-23 防堆积：超出每日配额、顺延到后天的到期题数
+const memoryDeferredCount = ref(0)
 
 const totalQuestions = computed(() => bankStore.banks.reduce((s, b) => s + b.question_count, 0))
 // 已掌握 = 错题本里标记「已掌握」的真实数量（2026-08-15 修复：此前用已练习数近似）
@@ -340,10 +342,11 @@ async function loadStudyPlan() {
 
 // 2026-08-23：加载记忆复习入口数据（今日待复习数 + 记忆健康度）
 // 用全量题目 + 复习记录在本地计算，失败静默不影响首页
+// 2026-08-23 防堆积：卡片显示「今日份（配额内）」而非全量到期；超过配额记为顺延数
 async function loadMemoryReviewStats() {
   try {
     const { idb } = await import('../lib/db')
-    const { getMemoryStrength, strengthLevel } = await import('../lib/spaced-repetition')
+    const { getMemoryStrength, strengthLevel, calculateDailyReviewCap } = await import('../lib/spaced-repetition')
     const allQ = await idb.listAll('questions')
     const allRev = await idb.listAll('review_records')
     // 每题取最新记录
@@ -353,9 +356,12 @@ async function loadMemoryReviewStats() {
       const ex = revMap.get(r.question_id)
       if (!ex || String(r.last_review) > String(ex.last_review)) revMap.set(r.question_id, r)
     }
-    // 今日到期数 + 健康度（有记录题目的平均权重分）
+    // 每日复习配额（联动学习计划，至少 50 保底）
+    const plans = await idb.listPlans()
+    const cap = calculateDailyReviewCap(plans)
+    // 今日到期数（全量）+ 健康度（有记录题目的平均权重分）
     const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999)
-    let due = 0, score = 0, tracked = 0
+    let allDue = 0, score = 0, tracked = 0
     for (const q of allQ) {
       const r = revMap.get(q.id)
       if (!r) continue
@@ -366,9 +372,11 @@ async function loadMemoryReviewStats() {
       else if (lvl === '中') score += 0.6
       else score += 0.3
       const next = r.next_review ? new Date(r.next_review).getTime() : (r.last_review ? new Date(r.last_review).getTime() + (r.interval ?? 0) * 86400000 : 0)
-      if (!Number.isNaN(next) && next <= todayEnd.getTime()) due++
+      if (!Number.isNaN(next) && next <= todayEnd.getTime()) allDue++
     }
-    memoryDueCount.value = due
+    // 今日份 = 全量到期但截断在配额内；超出记为顺延
+    memoryDueCount.value = Math.min(allDue, cap)
+    memoryDeferredCount.value = Math.max(0, allDue - cap)
     memoryHealth.value = tracked > 0 ? Math.round((score / tracked) * 100) : 0
   } catch (e) {
     console.error('加载记忆复习统计失败：', e)
@@ -775,6 +783,7 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
 .me-title { font-size: 18px; font-weight: bold; }
 .me-sub { font-size: 13px; opacity: 0.9; margin-top: 4px; }
 .me-sub b { color: #fde68a; }
+.me-fast { color: #fcd34d; font-weight: 600; }
 .me-right { display: flex; align-items: center; gap: 12px; }
 .me-health-wrap { width: 90px; height: 8px; background: rgba(255, 255, 255, 0.3); border-radius: 4px; overflow: hidden; }
 .me-health-fill { height: 100%; background: #fff; border-radius: 4px; transition: width 0.3s ease; }
