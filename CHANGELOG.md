@@ -6,6 +6,16 @@
 
 ---
 
+## [1.2.38] - 2026-08-23
+
+### 🐛 修复（严重）
+- **修复 `last_review` 存错为 `nextReview` 的 bug**：此前 `PracticeView.vue` 和 `MemoryReviewView.vue` 两处更新复习记录时，误将 `last_review` 设为 `result.nextReview`（下次应复习时间）而非 `now`（本次实际复习时间），导致：
+  - `isStaleReview`（逾期重学判断）失效——刚复习完的题也会被误判为"逾期"
+  - SM-2 间隔计算从错误的时间基准出发——复习后间隔被重复累加
+- 现 `last_review` 正确记录本次复习时间，`next_review` 记录下次应复习时间，两者分离，SM-2 算法行为恢复正常。
+
+---
+
 ## [1.2.37] - 2026-08-23
 
 ### ✨ 新功能

@@ -86,6 +86,12 @@
       <div v-if="showUpdateLog" class="update-log">
         <h4>更新日志</h4>
         <div class="log-entry">
+          <span class="log-version">v1.2.38</span>
+          <ul>
+            <li>修复记忆复习核心 bug：`last_review` 误存为下次复习时间导致逾期判断失效、SM-2 间隔计算错误，现已修复为正确记录本次复习时间</li>
+          </ul>
+        </div>
+        <div class="log-entry">
           <span class="log-version">v1.2.37</span>
           <ul>
             <li>记忆复习新增「备考驱动」动态节奏：设置考试日期后，按距考试天数动态加大每日复习比例（常规8% → 加量12% → 冲刺18% → 冲刺极限25%），越临近考试复习越突击</li>
@@ -511,7 +517,7 @@ import { ref, onMounted } from 'vue'
 import { api } from '../utils/api'
 import { toastSuccess, toastError } from '../utils/toast'
 
-const currentVersion = ref('1.2.37-web')
+const currentVersion = ref('1.2.38-web')
 const checkingUpdate = ref(false)
 const showUpdateLog = ref(false)
 
@@ -581,7 +587,7 @@ onMounted(async () => {
     console.error('获取数据库信息失败：', e)
     }
     // 读取应用版本（PWA 固定版本号）
-    currentVersion.value = '1.2.37-web'
+    currentVersion.value = '1.2.38-web'
     // 读取云同步配置
     loadCloudConfig()
     // 读取同步昵称

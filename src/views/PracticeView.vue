@@ -647,7 +647,7 @@ async function updateMemoryReview(questionId: number, correct?: boolean, duratio
   const data = {
     question_id: questionId,
     bank_id: bankId,
-    last_review: result.nextReview.toISOString(),
+    last_review: now.toISOString(),   // 本次复习时间（2026-08-23 修复：此前误存为 nextReview，导致 isStaleReview 判断失效）
     quality,
     repetitions: result.newRepetitions,
     ease_factor: result.newEaseFactor,

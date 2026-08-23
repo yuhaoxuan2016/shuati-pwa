@@ -465,7 +465,7 @@ async function updateMemory(questionId: number, correct: boolean, durationMs: nu
   const data = {
     question_id: questionId,
     bank_id: current.value?.bank_id,
-    last_review: result.nextReview.toISOString(),
+    last_review: now.toISOString(),   // 本次复习时间（2026-08-23 修复：此前误存为 nextReview）
     quality: q,
     repetitions: result.newRepetitions,
     ease_factor: result.newEaseFactor,
