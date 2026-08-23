@@ -33,6 +33,8 @@ export default defineConfig({
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // 免拦截 /calc/ 子路径（滑稽计算器部署在静态托管 /calc/，勿兜底回刷题宝首页）
+        navigateFallbackDenylist: [/^\/calc\//],
       },
     }),
   ],

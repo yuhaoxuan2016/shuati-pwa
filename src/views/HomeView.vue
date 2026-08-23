@@ -12,6 +12,7 @@
       <div class="header-btns">
         <button class="exam-btn" @click="$router.push('/exams')"><img class="btn-icon" src="/icons/exam.gif" alt="考试" /> 考试</button>
         <button class="mix-exam-btn" @click="$router.push('/mix-exam')"><img class="btn-icon" src="/icons/mix.gif" alt="综合抽题" /> 综合抽题</button>
+        <a class="calc-btn" href="/calc/" target="_blank" rel="noopener">🧮 计算器</a>
         <button class="new-bank-btn" @click="showNew = true">+ 新建题库</button>
       </div>
     </div>
@@ -635,6 +636,8 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
 .exam-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4); }
 .mix-exam-btn { padding: 9px 18px; background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%); color: #fff; border: none; border-radius: var(--radius-md); font-size: 14px; cursor: pointer; font-weight: 500; transition: background 0.15s, transform 0.1s; white-space: nowrap; box-shadow: 0 2px 6px rgba(79, 70, 229, 0.3); }
 .mix-exam-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4); }
+.calc-btn { padding: 9px 18px; background: linear-gradient(135deg, #38b26e 0%, #1f7a4e 100%); color: #fff; border: none; border-radius: var(--radius-md); font-size: 14px; cursor: pointer; font-weight: 500; transition: background 0.15s, transform 0.1s; white-space: nowrap; box-shadow: 0 2px 6px rgba(56, 178, 110, 0.3); text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+.calc-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(56, 178, 110, 0.4); }
 
 /* 每日激励卡 */
 .daily-card {
@@ -766,7 +769,7 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
 @media (max-width: 768px) {
   .header { flex-direction: column; align-items: stretch; gap: 12px; }
   .header-btns { flex-wrap: wrap; }
-  .header-btns button { flex: 1; min-width: 100px; padding: 9px 10px; font-size: 13px; }
+  .header-btns button, .header-btns .calc-btn { flex: 1; min-width: 100px; padding: 9px 10px; font-size: 13px; }
   .new-bank-btn { flex: 1 1 100% !important; }
   .grid { grid-template-columns: 1fr; }
   .daily-card { flex-direction: column; align-items: stretch; gap: 10px; }
