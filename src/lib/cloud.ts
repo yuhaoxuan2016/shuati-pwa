@@ -541,6 +541,10 @@ async function writeLocal(coll: CloudCollection, doc: any): Promise<void> {
       // 公共题 _local_id(1~6229) 会覆盖本地其他题库（如「添加到我的题库」的私人副本）同 id 题目，
       // 造成副本题目丢失无法恢复。正确做法：优先按 cloud_id 匹配本地已有记录（保留本地自增 id）；
       // 无匹配则 add 分配新 id。绝不使用云端 _local_id 作为本地 id。
+      //
+      // 2026-08-23 修复「题目叠加」：当 cloudId 为空或 null 时，qCloudIdx.map.get(null)
+      // 只能匹配一个题目，其余全部被当作"新题"重复 add → 每次同步题目翻倍。
+      // 兜底方案：cloudId 为空时，用 stem + bank_id 做内容去重。
       const q = { ...doc }
       const cloudBankId = q.bank_ref ?? q._local_bank_id ?? q.bank_id
       const bankId = await mapCloudBankToLocal(cloudBankId)
@@ -554,10 +558,20 @@ async function writeLocal(coll: CloudCollection, doc: any): Promise<void> {
           }
           localQ = qCloudIdx.map.get(cloudId) ?? null
         }
+        // 兜底去重：cloudId 为空时，按 stem + bank_id 匹配本地已有题目（防叠加）
+        if (!localQ && !cloudId) {
+          const all = await idb.listQuestions(bankId)
+          const stem = (q.stem || '').trim()
+          localQ = all.find((x: any) => (x.stem || '').trim() === stem) ?? null
+        }
         if (localQ) {
-          // 已同步过：保留本地 id，按最新内容更新
+          // 已同步过（或内容匹配）：保留本地 id，按最新内容更新
           const { _id, _local_id, ...rest } = q
           await idb.updateQuestion({ ...localQ, ...rest, id: localQ.id, bank_id: bankId, cloud_id: cloudId ?? localQ.cloud_id, synced_at: now() })
+          // 回写 cloud_id 到本地（下次同步可直接用 cloud_id 匹配，跳过 stem 比对）
+          if (cloudId && !localQ.cloud_id) {
+            await idb.updateQuestion({ ...localQ, cloud_id: cloudId })
+          }
         } else {
           // 首次拉取：剥离云端 id/_local_id，add 让 IndexedDB 分配新 id（避免覆盖其他题库）
           const { _id, _local_id, id, ...rest } = q

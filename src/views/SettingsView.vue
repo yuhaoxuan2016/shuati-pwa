@@ -86,6 +86,13 @@
       <div v-if="showUpdateLog" class="update-log">
         <h4>更新日志</h4>
         <div class="log-entry">
+          <span class="log-version">v1.2.40</span>
+          <ul>
+            <li>修复云同步题目叠加：cloudId 为空时按 stem+bank_id 去重，匹配后回写 cloud_id 防止下次再叠加</li>
+            <li>记忆复习页手机端适配完善：scope-bar/exam-banner/复习列表全宽适配</li>
+          </ul>
+        </div>
+        <div class="log-entry">
           <span class="log-version">v1.2.39</span>
           <ul>
             <li>记忆复习统计新增「知识点去重」：同题目内容（stem）只保留最强记忆记录，避免重复题导致健康度/分布虚高；概览显示「去重后知识点数」</li>
@@ -524,7 +531,7 @@ import { ref, onMounted } from 'vue'
 import { api } from '../utils/api'
 import { toastSuccess, toastError } from '../utils/toast'
 
-const currentVersion = ref('1.2.39-web')
+const currentVersion = ref('1.2.40-web')
 const checkingUpdate = ref(false)
 const showUpdateLog = ref(false)
 
@@ -594,7 +601,7 @@ onMounted(async () => {
     console.error('获取数据库信息失败：', e)
     }
     // 读取应用版本（PWA 固定版本号）
-    currentVersion.value = '1.2.39-web'
+    currentVersion.value = '1.2.40-web'
     // 读取云同步配置
     loadCloudConfig()
     // 读取同步昵称

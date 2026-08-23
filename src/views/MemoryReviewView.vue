@@ -618,11 +618,27 @@ async function onToggleFavorite() {
 .empty-sub { font-size: 13px; }
 
 @media (max-width: 768px) {
-  .overview { gap: 10px; }
-  .ov-item { min-width: 100px; padding: 14px; }
-  .ov-value { font-size: 26px; }
-  .due-item { flex-wrap: wrap; }
-  .due-text { white-space: normal; }
+  .memory { padding: 14px; }
+  .overview { gap: 8px; }
+  .ov-item { min-width: 90px; padding: 12px; }
+  .ov-value { font-size: 24px; }
+  .ov-cap { font-size: 10px; }
+  .scope-bar { gap: 6px; margin-bottom: 16px; }
+  .scope-btn { padding: 6px 10px; font-size: 12px; max-width: 140px; }
+  .exam-banner { font-size: 12px; padding: 6px 10px; }
+  .due-section { margin-bottom: 16px; }
+  .due-head { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .due-title { font-size: 14px; }
+  .start-btn { width: 100%; text-align: center; }
+  .due-item { flex-wrap: wrap; padding: 10px 12px; gap: 6px; }
+  .due-text { white-space: normal; font-size: 13px; }
   .due-meta { width: 100%; }
+  .practice-top { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .exit-btn { width: 100%; text-align: center; }
+  .memory-quality-bar { flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
+  .mc-btn { padding: 6px 12px; font-size: 12px; }
+  .dist-section { padding: 14px; }
+  .dist-legend { gap: 10px; }
+  .weak-section { margin-bottom: 16px; }
 }
 </style>

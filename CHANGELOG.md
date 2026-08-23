@@ -6,6 +6,16 @@
 
 ---
 
+## [1.2.40] - 2026-08-23
+
+### 🐛 修复
+- **云同步题目叠加**：修复 `writeLocal('questions', ...)` 在 `cloudId` 为空时，`qCloudIdx.map.get(null)` 只能匹配一个题目，其余全部被当作"新题"重复 add → 每次同步题目翻倍的问题。兜底方案：cloudId 为空时，按 `stem + bank_id` 内容去重；匹配成功后回写 `cloud_id` 到本地（下次同步可直接用 cloud_id 匹配，跳过 stem 比对）。
+
+### 📱 移动端适配
+- **MemoryReviewView 手机端完善**：scope-bar（题库选择器）改为可换行小屏适配；exam-banner/start-btn/exit-btn 全宽；due-head 纵向堆叠；memory-quality-bar 换行；overview/dist/due-item 间距优化。
+
+---
+
 ## [1.2.39] - 2026-08-23
 
 ### 🔧 性能优化
