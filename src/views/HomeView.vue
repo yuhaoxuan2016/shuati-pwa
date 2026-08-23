@@ -636,8 +636,8 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
 .exam-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4); }
 .mix-exam-btn { padding: 9px 18px; background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%); color: #fff; border: none; border-radius: var(--radius-md); font-size: 14px; cursor: pointer; font-weight: 500; transition: background 0.15s, transform 0.1s; white-space: nowrap; box-shadow: 0 2px 6px rgba(79, 70, 229, 0.3); }
 .mix-exam-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4); }
-.calc-btn { padding: 9px 18px; background: linear-gradient(135deg, #38b26e 0%, #1f7a4e 100%); color: #fff; border: none; border-radius: var(--radius-md); font-size: 14px; cursor: pointer; font-weight: 500; transition: background 0.15s, transform 0.1s; white-space: nowrap; box-shadow: 0 2px 6px rgba(56, 178, 110, 0.3); text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
-.calc-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(56, 178, 110, 0.4); }
+.calc-btn { padding: 9px 18px; background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%); color: #fff; border: none; border-radius: var(--radius-md); font-size: 14px; cursor: pointer; font-weight: 500; transition: background 0.15s, transform 0.1s; white-space: nowrap; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18); text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+.calc-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22); }
 
 /* 每日激励卡 */
 .daily-card {
