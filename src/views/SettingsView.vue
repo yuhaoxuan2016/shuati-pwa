@@ -558,7 +558,7 @@ import { ref, onMounted } from 'vue'
 import { api } from '../utils/api'
 import { toastSuccess, toastError } from '../utils/toast'
 
-const currentVersion = ref('1.2.42-web')
+const currentVersion = ref('1.2.43-web')
 const checkingUpdate = ref(false)
 const showUpdateLog = ref(false)
 
@@ -643,7 +643,7 @@ onMounted(async () => {
     console.error('获取数据库信息失败：', e)
     }
     // 读取应用版本（PWA 固定版本号）
-    currentVersion.value = '1.2.42-web'
+    currentVersion.value = '1.2.43-web'
     // 读取云同步配置
     loadCloudConfig()
     // 读取同步昵称

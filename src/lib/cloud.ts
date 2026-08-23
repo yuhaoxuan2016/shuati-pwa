@@ -542,15 +542,18 @@ async function writeLocal(coll: CloudCollection, doc: any): Promise<void> {
       // 造成副本题目丢失无法恢复。正确做法：优先按 cloud_id 匹配本地已有记录（保留本地自增 id）；
       // 无匹配则 add 分配新 id。绝不使用云端 _local_id 作为本地 id。
       //
-      // 2026-08-23 修复「题目叠加」：当 cloudId 为空或 null 时，qCloudIdx.map.get(null)
-      // 只能匹配一个题目，其余全部被当作"新题"重复 add → 每次同步题目翻倍。
-      // 兜底方案：cloudId 为空时，用 stem + bank_id 做内容去重。
+      // 2026-08-23 根治「题目叠加」：
+      // 前两次修复（v1.2.40 stem 去重）只防「新增」，没清存量，且本地旧数据 cloud_id 为空时仍会漏判。
+      // 本版幂等去重升级为「bank_ref + stem」：无论 cloudId 是否为空、是否匹配上，都做内容级去重。
+      // 只要本地题库里已存在同 stem 的题 → update（保留本地 id）而非 add，重复叠加从源头被阻断。
       const q = { ...doc }
       const cloudBankId = q.bank_ref ?? q._local_bank_id ?? q.bank_id
       const bankId = await mapCloudBankToLocal(cloudBankId)
       if (bankId != null) {
         const cloudId = doc._id ?? q.cloud_id ?? null
+        const stem = (q.stem || '').trim()
         let localQ: any = null
+        // 1) 优先用 cloud_id 精确匹配（Map O(1)，按 bankId 缓存）
         if (cloudId) {
           if (!qCloudIdx || qCloudIdx.bankId !== bankId) {
             const all = await idb.listQuestions(bankId)
@@ -558,14 +561,13 @@ async function writeLocal(coll: CloudCollection, doc: any): Promise<void> {
           }
           localQ = qCloudIdx.map.get(cloudId) ?? null
         }
-        // 兜底去重：cloudId 为空时，按 stem + bank_id 匹配本地已有题目（防叠加）
-        if (!localQ && !cloudId) {
+        // 2) 兜底：内容级去重——同题库下同 stem 已存在 → 视为同一题（公共题导副本、旧数据无 cloud_id 都靠它）
+        if (!localQ && stem) {
           const all = await idb.listQuestions(bankId)
-          const stem = (q.stem || '').trim()
           localQ = all.find((x: any) => (x.stem || '').trim() === stem) ?? null
         }
         if (localQ) {
-          // 已同步过（或内容匹配）：保留本地 id，按最新内容更新
+          // 已存在：保留本地 id 与本地 cloud_id，仅按最新内容更新
           const { _id, _local_id, ...rest } = q
           await idb.updateQuestion({ ...localQ, ...rest, id: localQ.id, bank_id: bankId, cloud_id: cloudId ?? localQ.cloud_id, synced_at: now() })
           // 回写 cloud_id 到本地（下次同步可直接用 cloud_id 匹配，跳过 stem 比对）
