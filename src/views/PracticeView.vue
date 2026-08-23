@@ -136,7 +136,7 @@
       />
       <!-- 2026-08-23：记忆自评标签（自动评估，可点击手动覆盖） -->
       <div v-if="memoryReviewMap.has(currentQuestion.id)" class="memory-review-bar">
-        <span class="memory-label">🧠 记忆自评</span>
+        <span class="memory-label">记忆自评</span>
         <div class="memory-quality-btns">
           <button
             v-for="opt in MEMORY_OPTIONS"

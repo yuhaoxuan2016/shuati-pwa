@@ -1,7 +1,7 @@
 <template>
   <div class="memory">
     <div class="memory-header">
-      <h2>🧠 记忆复习</h2>
+      <h2>记忆复习</h2>
       <p class="sub">基于遗忘曲线的间隔重复 · 自动评估 + 可手动覆盖</p>
       <p v-if="daysToExam !== null" class="exam-banner">
         ⏰ 距最近考试还有 <b>{{ daysToExam }}</b> 天，已开启「{{ examPhaseLabel }}」复习节奏
