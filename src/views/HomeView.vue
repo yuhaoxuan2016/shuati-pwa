@@ -71,6 +71,7 @@
           <div class="me-title">记忆复习</div>
           <div class="me-sub" v-if="memoryDueCount > 0">今日建议复习 <b>{{ memoryDueCount }}</b> 题<template v-if="memoryDeferredCount > 0"> · <span class="me-fast">{{ memoryDeferredCount }} 题顺延</span></template> · 健康度 {{ memoryHealth }}%</div>
           <div class="me-sub" v-else>今日无待复习，去刷题积累记忆</div>
+          <div v-if="memoryDaysToExam !== null" class="me-exam">⏰ 距最近考试 <b>{{ memoryDaysToExam }}</b> 天，{{ memoryPhaseLabel }}节奏</div>
         </div>
       </div>
       <div class="me-right">
@@ -264,6 +265,17 @@ const memoryDueCount = ref(-1)
 const memoryHealth = ref(0)
 // 2026-08-23 防堆积：超出每日配额、顺延到后天的到期题数
 const memoryDeferredCount = ref(0)
+// 2026-08-23：备考驱动——距最近考试天数（null=未设考试日期）
+const memoryDaysToExam = ref<number | null>(null)
+// 距考阶段标签（用于首页卡片提示）
+const memoryPhaseLabel = computed(() => {
+  const d = memoryDaysToExam.value
+  if (d === null) return ''
+  if (d <= 3) return '冲刺极限'
+  if (d <= 8) return '冲刺加量'
+  if (d <= 30) return '加量复习'
+  return '常规'
+})
 
 const totalQuestions = computed(() => bankStore.banks.reduce((s, b) => s + b.question_count, 0))
 // 已掌握 = 错题本里标记「已掌握」的真实数量（2026-08-15 修复：此前用已练习数近似）
@@ -346,7 +358,7 @@ async function loadStudyPlan() {
 async function loadMemoryReviewStats() {
   try {
     const { idb } = await import('../lib/db')
-    const { getMemoryStrength, strengthLevel, calculateDailyReviewCap } = await import('../lib/spaced-repetition')
+    const { getMemoryStrength, strengthLevel, calculateDailyReviewCap, calculateDaysToExam } = await import('../lib/spaced-repetition')
     const allQ = await idb.listAll('questions')
     const allRev = await idb.listAll('review_records')
     // 每题取最新记录
@@ -356,9 +368,11 @@ async function loadMemoryReviewStats() {
       const ex = revMap.get(r.question_id)
       if (!ex || String(r.last_review) > String(ex.last_review)) revMap.set(r.question_id, r)
     }
-    // 每日复习配额（联动学习计划，至少 50 保底）
+    // 每日复习配额（联动学习计划，至少 50 保底）+ 距考天数动态
     const plans = await idb.listPlans()
     const cap = calculateDailyReviewCap(plans)
+    const examDates = plans.map(p => p.examDate).filter((d): d is string => !!d).sort()
+    memoryDaysToExam.value = calculateDaysToExam(examDates[0] || null)
     // 今日到期数（全量）+ 健康度（有记录题目的平均权重分）
     const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999)
     let allDue = 0, score = 0, tracked = 0
@@ -784,6 +798,8 @@ onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); docum
 .me-sub { font-size: 13px; opacity: 0.9; margin-top: 4px; }
 .me-sub b { color: #fde68a; }
 .me-fast { color: #fcd34d; font-weight: 600; }
+.me-exam { font-size: 12px; color: #fde68a; margin-top: 4px; }
+.me-exam b { color: #fff; }
 .me-right { display: flex; align-items: center; gap: 12px; }
 .me-health-wrap { width: 90px; height: 8px; background: rgba(255, 255, 255, 0.3); border-radius: 4px; overflow: hidden; }
 .me-health-fill { height: 100%; background: #fff; border-radius: 4px; transition: width 0.3s ease; }

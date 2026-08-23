@@ -326,3 +326,62 @@ export function calculateBankReviewCap(bankQuestionCount: number): number {
   const n = Math.max(0, bankQuestionCount || 0)
   return Math.round(Math.max(BANK_CAP_MIN, Math.min(BANK_CAP_MAX, n * BANK_CAP_RATIO)))
 }
+
+// ============================================================
+// 2026-08-23 新增：备考驱动动态复习节奏
+// 设置考试日期后，按「距考试天数」动态加大每日复习比例（越临近越突击）
+// 没设考试日期 → 用常规比例 8%
+// ============================================================
+
+/**
+ * 计算距考试的天数（examDate - 今天，向上取整）
+ *  - examDate 无效/为空 → 返回 null（视为未设考试）
+ *  - examDate 已过期（今天>=考试日）→ 返回 0（进入冲刺极限）
+ *
+ * @param examDate 考试日期（'YYYY-MM-DD'），可为空
+ * @returns 距考试天数（>=0 整数），或 null 表示未设考试日期
+ */
+export function calculateDaysToExam(examDate: string | null | undefined): number | null {
+  if (!examDate) return null
+  const exam = new Date(examDate + 'T00:00:00')
+  if (Number.isNaN(exam.getTime())) return null
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const examStart = new Date(exam); examStart.setHours(0, 0, 0, 0)
+  const diff = Math.round((examStart.getTime() - today.getTime()) / 86400000)
+  return diff < 0 ? 0 : diff
+}
+
+/**
+ * 距考试天数 → 每日复习比例（占题库比例）
+ *   > 30 天   → 8%   （常规）
+ *   8–30 天   → 12%  （开始加量）
+ *   3–8 天    → 18%  （冲刺加量）
+ *   ≤ 3 天    → 25%  （冲刺极限）
+ * 未设考试（null）→ 8% 常规
+ *
+ * @param daysToExam 距考试天数（null=未设考试）
+ * @returns 每日复习比例（0-1 小数）
+ */
+export function calculateDynamicRatio(daysToExam: number | null): number {
+  if (daysToExam === null) return BANK_CAP_RATIO
+  if (daysToExam <= 3) return 0.25
+  if (daysToExam <= 8) return 0.18
+  if (daysToExam <= 30) return 0.12
+  return BANK_CAP_RATIO
+}
+
+/**
+ * 按「题库规模 + 距考天数」计算动态每日复习配额
+ *   quota = clamp(题库题数 × 动态比例, 保底 25, 上限 200)
+ * 未设考试 → 效果等同 calculateBankReviewCap
+ *
+ * @param bankQuestionCount 题库题目数
+ * @param daysToExam 距考天数（null=未设考试）
+ * @returns 每日复习配额
+ */
+export function calculateDynamicCap(bankQuestionCount: number, daysToExam: number | null): number {
+  const n = Math.max(0, bankQuestionCount || 0)
+  const ratio = calculateDynamicRatio(daysToExam)
+  return Math.round(Math.max(BANK_CAP_MIN, Math.min(BANK_CAP_MAX, n * ratio)))
+}

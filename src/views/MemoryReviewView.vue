@@ -3,6 +3,9 @@
     <div class="memory-header">
       <h2>🧠 记忆复习</h2>
       <p class="sub">基于遗忘曲线的间隔重复 · 自动评估 + 可手动覆盖</p>
+      <p v-if="daysToExam !== null" class="exam-banner">
+        ⏰ 距最近考试还有 <b>{{ daysToExam }}</b> 天，已开启「{{ examPhaseLabel }}」复习节奏
+      </p>
     </div>
 
     <!-- 2026-08-23：复习范围选择（全部 / 各题库独立，配额随题库规模联动） -->
@@ -166,6 +169,8 @@ import {
   labelToQuality,
   calculateDailyReviewCap,
   calculateBankReviewCap,
+  calculateDynamicCap,
+  calculateDaysToExam,
   isStaleReview,
   DEFAULT_DAILY_REVIEW_CAP,
 } from '../lib/spaced-repetition'
@@ -189,6 +194,8 @@ const favoriteIds = ref<Set<number>>(new Set())
 // 2026-08-23：按题库独立复习
 const banks = ref<any[]>([])
 const selectedBankId = ref<number | null>(null)
+// 2026-08-23：备考驱动动态配额——最早考期距今天数
+const daysToExam = ref<number | null>(null)
 
 // 练习状态
 const practicing = ref(false)
@@ -225,7 +232,11 @@ async function loadData() {
       }
     }
     // 2026-08-23 防堆积：每日复习配额联动学习计划（全库模式用；单库模式按库规模）
+    // 备考驱动：取所有计划最早到期的考试日期 → 距考天数 → 动态配额
     const plans = await idb.listPlans()
+    // 最早考期（取所有计划 examDate 中最小日期优先）
+    const examDates = plans.map(p => p.examDate).filter((d): d is string => !!d).sort()
+    daysToExam.value = calculateDaysToExam(examDates[0] || null)
     todayCap.value = calculateDailyReviewCap(plans)
     loaded.value = true
   } catch (e) {
@@ -297,9 +308,9 @@ const selectedBankName = computed(() => selectedBank.value?.name || '全部题�
 function bankQuestionCount(bankId: number): number {
   return questions.value.filter(q => q.bank_id === bankId).length
 }
-// 单库每日配额（按题库规模联动）
+// 单库每日配额（按题库规模 + 距考天数动态联动）
 function bankCap(bankId: number): number {
-  return calculateBankReviewCap(bankQuestionCount(bankId))
+  return calculateDynamicCap(bankQuestionCount(bankId), daysToExam.value)
 }
 // 单库今日到期数（含顺延，用于 scope 角标）
 function bankDueCount(bankId: number): number {
@@ -309,12 +320,25 @@ function selectBank(id: number | null) {
   selectedBankId.value = id
 }
 
+// 2026-08-23：距考阶段标签（用于提示当前复习节奏）
+const examPhaseLabel = computed(() => {
+  const d = daysToExam.value
+  if (d === null) return '常规'
+  if (d <= 3) return '冲刺极限'
+  if (d <= 8) return '冲刺加量'
+  if (d <= 30) return '加量复习'
+  return '常规'
+})
+
 // 2026-08-23 防堆积：每日复习配额
-// 全库模式 → 联动学习计划（至少 50 保底）；单库模式 → 按该库规模联动
+// 全库模式 → 联动学习计划（至少 50 保底）+ 距考天数动态；单库模式 → 按该库规模 + 距考天数动态
 const todayCap = ref(DEFAULT_DAILY_REVIEW_CAP)
 const activeCap = computed(() => {
   if (selectedBankId.value !== null) return bankCap(selectedBankId.value)
-  return todayCap.value
+  // 全库模式：用动态配额（考虑距考天数），但至少不低于计划配额
+  const totalCount = questions.value.length
+  const dynamic = calculateDynamicCap(totalCount, daysToExam.value)
+  return Math.max(dynamic, todayCap.value)
 })
 // 顺延数量（超出配额的部分）
 const deferredCount = computed(() => Math.max(0, allDueCount.value - activeCap.value))
@@ -494,6 +518,8 @@ async function onToggleFavorite() {
 .memory-header { margin-bottom: 24px; }
 .memory-header h2 { margin: 0 0 6px 0; }
 .memory-header .sub { color: var(--color-text-tertiary); font-size: 13px; margin: 0; }
+.exam-banner { margin: 12px 0 0; padding: 8px 14px; background: #fef3c7; border: 1px solid #fde68a; border-radius: var(--radius-md); color: #b45309; font-size: 13px; display: inline-block; }
+.exam-banner b { color: #c2410c; }
 
 .loading { text-align: center; padding: 48px; color: var(--color-text-tertiary); }
 
