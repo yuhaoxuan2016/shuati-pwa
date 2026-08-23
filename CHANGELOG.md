@@ -6,6 +6,16 @@
 
 ---
 
+## [1.2.42] - 2026-08-23
+
+### 🐛 修复（全量代码审查发现）
+- **deleteBank 级联删除遗漏**：删除题库时未清理 `review_records`（复习记录），导致删题库后复习记录残留。现补全 `review_records` 的按 `bank_id` 匹配删除。
+- **judgeAnswerBool 空答案默认 'true'**：无法识别的判断词（空答案/乱码）不再默认返回 `'true'` 误判为正确，改为空串。
+- **ExamTakeView reviewWrongs 类型声明**：补全 `myRaw`/`correctRaw` 字段，与 `getWrongQuestions` 返回值一致。
+- **StatsView 错题饼图暗色主题适配**：中心圆和文字改用 CSS 变量（`--color-card`/`--color-text`），暗色主题下不再硬编码白色背景。
+
+---
+
 ## [1.2.41] - 2026-08-23
 
 ### 🔧 全面代码审查

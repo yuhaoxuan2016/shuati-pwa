@@ -86,6 +86,15 @@
       <div v-if="showUpdateLog" class="update-log">
         <h4>更新日志</h4>
         <div class="log-entry">
+          <span class="log-version">v1.2.42</span>
+          <ul>
+            <li>修复 deleteBank 级联删除遗漏 review_records：删题库后复习记录不再残留</li>
+            <li>修复 judgeAnswerBool 空答案默认 'true'：无法识别的判断词不再误判为正确</li>
+            <li>修复 ExamTakeView reviewWrongs 类型声明：补全 myRaw/correctRaw 字段</li>
+            <li>修复 StatsView 错题饼图暗色主题适配：中心圆和文字改用 CSS 变量颜色</li>
+          </ul>
+        </div>
+        <div class="log-entry">
           <span class="log-version">v1.2.41</span>
           <ul>
             <li>整体代码审查：全库 bug 扫描 + 58 项单元测试全通过 + 全页面手机端适配检查</li>
@@ -539,7 +548,7 @@ import { ref, onMounted } from 'vue'
 import { api } from '../utils/api'
 import { toastSuccess, toastError } from '../utils/toast'
 
-const currentVersion = ref('1.2.41-web')
+const currentVersion = ref('1.2.42-web')
 const checkingUpdate = ref(false)
 const showUpdateLog = ref(false)
 
@@ -609,7 +618,7 @@ onMounted(async () => {
     console.error('获取数据库信息失败：', e)
     }
     // 读取应用版本（PWA 固定版本号）
-    currentVersion.value = '1.2.41-web'
+    currentVersion.value = '1.2.42-web'
     // 读取云同步配置
     loadCloudConfig()
     // 读取同步昵称

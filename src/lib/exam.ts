@@ -50,14 +50,16 @@ export function classifyQuestionType(q: { type?: string | null; options?: string
 }
 
 // 判断题答案统一为 'true'/'false'（A=首个选项对应的真值，兼容 answer 直接存判断词）
+// 2026-08-23 修复：空答案默认返回 '' 而非 'true'，避免误判为正确
 export function judgeAnswerBool(ans: string | null, options: string[] | null): string {
   const trueFirst = !!options && options.length >= 1 && JUDGE_TRUE_WORDS.has(String(options[0]).trim())
   const v = String(ans ?? '').trim().toUpperCase()
+  if (!v) return ''  // 空答案不默认判对
   if (v === 'A') return trueFirst ? 'true' : 'false'
   if (v === 'B') return trueFirst ? 'false' : 'true'
   if (JUDGE_TRUE_WORDS.has(String(ans ?? '').trim())) return 'true'
   if (JUDGE_FALSE_WORDS.has(String(ans ?? '').trim())) return 'false'
-  return 'true'
+  return ''  // 无法识别的判断词不默认判对
 }
 
 // 智能组卷配额模板：5 个等级 × 3 种题型 = 220 题（从公共题库抽题）

@@ -240,20 +240,26 @@ function drawWrongChart() {
   ctx.fillStyle = '#F59E0B'
   ctx.fill()
   
-  // 绘制中心白色圆（环形图效果）
+  // 绘制中心圆（环形图效果）——读取 CSS 变量适配暗色主题
+  const root = document.documentElement
+  const cs = getComputedStyle(root)
+  const bgColor = cs.getPropertyValue('--color-card').trim() || '#ffffff'
+  const textColor = cs.getPropertyValue('--color-text').trim() || '#374151'
+  const subColor = cs.getPropertyValue('--color-text-secondary').trim() || '#6B7280'
+
   ctx.beginPath()
   ctx.arc(centerX, centerY, radius * 0.6, 0, 2 * Math.PI)
-  ctx.fillStyle = '#ffffff'
+  ctx.fillStyle = bgColor
   ctx.fill()
-  
+
   // 绘制中心文字
-  ctx.fillStyle = '#374151'
+  ctx.fillStyle = textColor
   ctx.font = 'bold 24px sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText(`${wrongStats.value.masteryRate}%`, centerX, centerY - 10)
   ctx.font = '12px sans-serif'
-  ctx.fillStyle = '#6B7280'
+  ctx.fillStyle = subColor
   ctx.fillText('掌握率', centerX, centerY + 15)
 }
 

@@ -99,10 +99,11 @@ export const idb = {
   },
   async deleteBank(id: number): Promise<void> {
     await tx('quiz_banks', 'readwrite', s => s.delete(id))
-    // 级联删除题目、练习记录、错题、收藏
+    // 级联删除题目、练习记录、错题、收藏、已掌握、复习记录（2026-08-23 补全 review_records）
     const db = await openDB()
     await new Promise<void>((resolve, reject) => {
-      const t = db.transaction(['questions', 'practice_records', 'wrong_questions', 'favorites', 'mastered_questions'], 'readwrite')
+      const stores = ['questions', 'practice_records', 'wrong_questions', 'favorites', 'mastered_questions', 'review_records'] as const
+      const t = db.transaction([...stores], 'readwrite')
       t.oncomplete = () => resolve()
       t.onerror = () => reject(t.error)
       const qs = t.objectStore('questions')
@@ -112,13 +113,26 @@ export const idb = {
         const c = req.result
         if (c) { qs.delete(c.value.id); c.continue() }
       }
-      for (const [name, storeName] of [['practice_records', 'practice_records'], ['wrong_questions', 'wrong_questions'], ['favorites', 'favorites'], ['mastered_questions', 'mastered_questions']] as const) {
+      for (const storeName of stores) {
         const st = t.objectStore(storeName)
-        const i = st.index('bank_id')
-        const r = i.openCursor(IDBKeyRange.only(id))
-        r.onsuccess = () => {
-          const c = r.result
-          if (c) { st.delete(c.value.id); c.continue() }
+        // review_records 没有 bank_id 索引，跳过（用全量遍历兜底）
+        const i = st.indexNames.contains('bank_id') ? st.index('bank_id') : null
+        if (i) {
+          const r = i.openCursor(IDBKeyRange.only(id))
+          r.onsuccess = () => {
+            const c = r.result
+            if (c) { st.delete(c.value.id); c.continue() }
+          }
+        } else {
+          // review_records 无 bank_id 索引：遍历全量，按 bank_id 字段匹配删除
+          const r = st.openCursor()
+          r.onsuccess = () => {
+            const c = r.result
+            if (c) {
+              if (c.value.bank_id === id) st.delete(c.value.id)
+              c.continue()
+            }
+          }
         }
       }
     })
