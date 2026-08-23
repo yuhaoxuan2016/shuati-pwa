@@ -280,6 +280,10 @@ async function pullCollection(collection: CloudCollection, localIds: Set<string>
   } catch (e: any) { console.warn(`拉取 ${collection} 本人数据失败：`, e?.message || e) }
   for (const rows of mineQueries) {
     for (const d of rows) {
+      // 2026-08-23：只同步私人数据——公共题库（visibility=public）不拉进本地。
+      // 公共题库本就云端直读（listPublicBanks），本地只应保留用户自己的私人题库。
+      // 此前会把公共库空壳拉进本地（0 题），造成「我的题库」区出现空公共库。
+      if (collection === 'quiz_banks' && d.visibility === 'public') continue
       const key = String(d._id ?? d.id)
       if (!seen.has(key)) { seen.add(key); all.push(d) }
     }

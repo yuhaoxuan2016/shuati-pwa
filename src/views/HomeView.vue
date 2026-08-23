@@ -414,6 +414,16 @@ onMounted(async () => {
           bankStatsMap.value.set(b.id, { ...s, accuracy: s.practiced > 0 ? Math.min(100, Math.round((s.correct / s.practiced) * 100)) : 0 })
         } catch { /* ignore */ }
       }))
+      // 2026-08-23：清理「我的题库」里的空公共壳（cloud_shared=true 且 0 题）。
+      // 这类题库是早期同步误拉进来的公共题库空壳（公共题目不进本地缓存），仅占位无内容，
+      // 且公共题库现在是云端直读（listPublicBanks），本地无需保留。删除仅限本地，不影响云端公共数据。
+      const emptyPublicShells = bankStore.banks.filter(b => b.cloud_shared && (bankStatsMap.value.get(b.id)?.total ?? 0) === 0)
+      for (const shell of emptyPublicShells) {
+        try {
+          await bankStore.remove(shell.id)
+          console.info('[云同步] 已清理空公共题库壳：', shell.name)
+        } catch (e) { console.warn('清理空公共题库壳失败：', shell.name, e) }
+      }
     }),
   ])
   // 计算今日统计 & 连续天数
