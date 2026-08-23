@@ -40,8 +40,7 @@
       </div>
 
       <div class="actions-bar">
-        <button v-if="filteredWrongIds.length && !practicing" @click="start">错题重练（全部）</button>
-        <button v-if="filteredWrongIds.length && !practicing" @click="startIntensive" class="intensive-btn">重点攻克（薄弱）</button>
+        <button v-if="filteredWrongIds.length && !practicing" @click="start">错题重练</button>
         <button v-if="practicing" @click="exitPractice">退出重练</button>
       </div>
 
@@ -223,25 +222,6 @@ function start() {
   loadCurrent()
 }
 
-// 重点攻克：只练习连续答对 0 次的题目（完全没掌握的薄弱题）
-function startIntensive() {
-  const intensiveIds = filteredWrongIds.value.filter(id => {
-    const streak = streakMap.value.get(id) || 0
-    return streak === 0  // 只练完全没掌握的（连对 0 次）
-  })
-
-  if (intensiveIds.length === 0) {
-    toastInfo('没有需要重点攻克的错题（所有错题都至少答对过 1 次）')
-    return
-  }
-
-  queue.value = intensiveIds
-  idx.value = 0
-  practiceMode.value = 'pending'
-  practicing.value = true
-  loadCurrent()
-}
-
 // 2026-08-19：已掌握重练——把已掌握的题作为队列重新练习（答错自动移回错题本）
 function startMastered() {
   queue.value = [...masteredIds.value]
@@ -415,10 +395,6 @@ function getQuestionPreview(id: number): string {
 .stat-item { display: flex; flex-direction: column; align-items: center; }
 .stat-value { font-size: 24px; font-weight: 600; color: var(--color-primary); }
 .stat-label { font-size: 12px; color: var(--color-text-secondary); margin-top: 4px; }
-
-/* 强化练习按钮 */
-.intensive-btn { background: var(--color-warning-light); border-color: var(--color-warning); color: var(--color-warning); margin-left: 8px; }
-.intensive-btn:hover { background: var(--color-warning); color: #fff; }
 
 .actions-bar { margin-bottom: 16px; }
 .empty { text-align: center; padding: 48px; color: var(--color-text-tertiary); }
