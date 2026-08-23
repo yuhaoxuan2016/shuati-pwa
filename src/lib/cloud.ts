@@ -297,7 +297,7 @@ export async function syncFromCloud(): Promise<{ pulled: number }> {
   cloudState.error = null
   try {
     let pulled = 0
-    qCloudIdx = null // 每次同步重建 cloud_id 索引（防缓存过期）
+    resetSyncCaches() // 2026-08-23：每次同步重建 cloud_id/stem/题库 索引（防缓存过期）
     for (const coll of CLOUD_COLLECTIONS) {
       const cloudDocs = await pullCollection(coll, new Set())
       if (!cloudDocs.length) continue
@@ -316,9 +316,10 @@ export async function syncFromCloud(): Promise<{ pulled: number }> {
         const localId = String(cd._local_id ?? cd.id ?? cd._id)
         const local = localMap.get(localId) || (cd._id ? localMap.get('cid:' + cd._id) : undefined)
         if (!local || (cd.updated_at || '') > (local.updated_at || '')) {
-          // 云端较新（或本地没有）→ 写入本地
-          await writeLocal(coll, cd)
-          pulled++
+          // 云端较新（或本地没有）→ 写入本地；2026-08-23 计数修复：pulled 只统计真正新增的题目，
+          // 避免"遍历的云端文档数"虚高（此前导入干净备份后显示拉取 15800，实际云端只 14088）
+          const type = await writeLocal(coll, cd)
+          if (type === 'added') pulled++
         }
       }
     }
@@ -486,9 +487,18 @@ async function listLocalAll(coll: CloudCollection): Promise<any[]> {
 }
 
 // questions 的 cloud_id 索引缓存（同一次同步内复用，避免 7049 道公共题逐条全量 listQuestions 造成 O(n²) 卡死）
-let qCloudIdx: { bankId: number; map: Map<string, any> } | null = null
+// 2026-08-23 扩展：cloudMap（cloud_id→题目）+ stemMap（stem→题目），供精确匹配 + 内容级去重，均 O(1)
+let qCloudIdx: { bankId: number; cloudMap: Map<string, any>; stemMap: Map<string, any> } | null = null
 
-async function writeLocal(coll: CloudCollection, doc: any): Promise<void> {
+// 2026-08-23 本地题库映射缓存（mapCloudBankToLocal 内部会 listBanks；一次同步内固化，避免每道题都全量扫题库）
+let bankMapCache: { banks: any[] } | null = null
+function resetSyncCaches(): void {
+  qCloudIdx = null
+  bankMapCache = null
+}
+
+// 写本地，返回本次变更类型：added=新增 / updated=更新 / skipped=未变
+async function writeLocal(coll: CloudCollection, doc: any): Promise<'added' | 'updated' | 'skipped'> {
   switch (coll) {
     case 'quiz_banks': {
       // 云端文档：本地 id 存在 _local_id 字段（push 时 doc.id 被转成 _local_id）
@@ -514,7 +524,7 @@ async function writeLocal(coll: CloudCollection, doc: any): Promise<void> {
               updated_at: doc.updated_at,
               synced_at: now(), // 2026-08-21：云端拉取视为已同步
             })
-            break
+            return 'added'
           }
           await idb.updateBank?.({ ...doc, id: localId, cloud_id: doc._id ?? exists.cloud_id, visibility: doc.visibility || 'public', cloud_shared: true, synced_at: now() })
         } else {
@@ -545,7 +555,7 @@ async function writeLocal(coll: CloudCollection, doc: any): Promise<void> {
           synced_at: now(), // 2026-08-21：云端拉取视为已同步
         })
       }
-      break
+      return 'updated'
     }
     case 'questions': {
       // 云端题目：bank_ref 是可靠关联（题库云端 _id）；_local_bank_id 是旧设备 id（可能与题库 _local_id 错位）
@@ -561,38 +571,52 @@ async function writeLocal(coll: CloudCollection, doc: any): Promise<void> {
       const q = { ...doc }
       const cloudBankId = q.bank_ref ?? q._local_bank_id ?? q.bank_id
       const bankId = await mapCloudBankToLocal(cloudBankId)
-      if (bankId != null) {
-        const cloudId = doc._id ?? q.cloud_id ?? null
-        const stem = (q.stem || '').trim()
-        let localQ: any = null
-        // 1) 优先用 cloud_id 精确匹配（Map O(1)，按 bankId 缓存）
-        if (cloudId) {
-          if (!qCloudIdx || qCloudIdx.bankId !== bankId) {
-            const all = await idb.listQuestions(bankId)
-            qCloudIdx = { bankId, map: new Map(all.map((x: any) => [x.cloud_id, x])) }
-          }
-          localQ = qCloudIdx.map.get(cloudId) ?? null
+      if (bankId == null) return 'skipped'
+      const cloudId = doc._id ?? q.cloud_id ?? null
+      const stem = (q.stem || '').trim()
+      let localQ: any = null
+      // 索引缓存：cloudMap（cloud_id→题目）+ stemMap（stem→题目），一次构建，O(1) 查询，避免每题全量扫
+      const ensureIdx = async () => {
+        if (qCloudIdx && qCloudIdx.bankId === bankId) return
+        const all = await idb.listQuestions(bankId)
+        const cloudMap = new Map<string, any>()
+        const stemMap = new Map<string, any>()
+        for (const x of all) {
+          if (x.cloud_id) cloudMap.set(x.cloud_id, x)
+          const s = (x.stem || '').trim()
+          if (s && !stemMap.has(s)) stemMap.set(s, x)
         }
-        // 2) 兜底：内容级去重——同题库下同 stem 已存在 → 视为同一题（公共题导副本、旧数据无 cloud_id 都靠它）
-        if (!localQ && stem) {
-          const all = await idb.listQuestions(bankId)
-          localQ = all.find((x: any) => (x.stem || '').trim() === stem) ?? null
-        }
-        if (localQ) {
-          // 已存在：保留本地 id 与本地 cloud_id，仅按最新内容更新
-          const { _id, _local_id, ...rest } = q
-          await idb.updateQuestion({ ...localQ, ...rest, id: localQ.id, bank_id: bankId, cloud_id: cloudId ?? localQ.cloud_id, synced_at: now() })
-          // 回写 cloud_id 到本地（下次同步可直接用 cloud_id 匹配，跳过 stem 比对）
-          if (cloudId && !localQ.cloud_id) {
-            await idb.updateQuestion({ ...localQ, cloud_id: cloudId })
-          }
-        } else {
-          // 首次拉取：剥离云端 id/_local_id，add 让 IndexedDB 分配新 id（避免覆盖其他题库）
-          const { _id, _local_id, id, ...rest } = q
-          await idb.addQuestions(bankId, [{ ...rest, cloud_id: cloudId, synced_at: now() }])
-        }
+        qCloudIdx = { bankId, cloudMap, stemMap }
       }
-      break
+      // 1) 优先用 cloud_id 精确匹配（O(1)）
+      if (cloudId) {
+        await ensureIdx()
+        localQ = qCloudIdx!.cloudMap.get(cloudId) ?? null
+      }
+      // 2) 兜底：内容级去重——同题库下同 stem 已存在 → 视为同一题（公共题导副本、旧数据无 cloud_id 都靠它）
+      if (!localQ && stem) {
+        await ensureIdx()
+        localQ = qCloudIdx!.stemMap.get(stem) ?? null
+      }
+      if (localQ) {
+        // 已存在：保留本地 id 与本地 cloud_id，仅按最新内容更新
+        const { _id, _local_id, ...rest } = q
+        const wasNoCloud = cloudId && !localQ.cloud_id
+        await idb.updateQuestion({ ...localQ, ...rest, id: localQ.id, bank_id: bankId, cloud_id: cloudId ?? localQ.cloud_id, synced_at: now() })
+        // 回写 cloud_id 后刷新索引（下次同库可直接 cloud_id 命中）
+        if (wasNoCloud) {
+          await idb.updateQuestion({ ...localQ, cloud_id: cloudId })
+          await ensureIdx()
+        }
+        return wasNoCloud ? 'updated' : 'skipped'
+      } else {
+        // 首次拉取：剥离云端 id/_local_id，add 让 IndexedDB 分配新 id（避免覆盖其他题库）
+        const { _id, _local_id, id, ...rest } = q
+        await idb.addQuestions(bankId, [{ ...rest, cloud_id: cloudId, synced_at: now() }])
+        // 新增后刷新索引（同库后续题可直接命中）
+        await ensureIdx()
+        return 'added'
+      }
     }
     case 'practice_records':
     case 'wrong_questions':
@@ -626,23 +650,26 @@ async function writeLocal(coll: CloudCollection, doc: any): Promise<void> {
           await stampSyncedByKey(coll, bankId, r.question_id)
         }
       }
-      break
+      return 'skipped'
     }
     case 'settings': {
       // 敏感设置（ai_api_key）不参与云同步，云端残留也忽略
-      if (doc.key === 'ai_api_key') break
+      if (doc.key === 'ai_api_key') return 'skipped'
       // 2026-08-21：bulkPut 带 synced_at（拉取视为已同步；settings 推送为全推，此标记仅避免重复写）
       await idb.bulkPut('settings', [{ key: doc.key, value: doc.value, synced_at: now() }])
-      break
+      return 'skipped'
     }
   }
+  return 'skipped'
 }
 
 // 云端 bank_id → 本地 bank_id
 // 云端文档带 bank_ref（题库云端 _id）时优先按本地题库 cloud_id 匹配（可靠关联）；
 // 其次按 _local_bank_id（同设备/多设备同 id 兼容）或名字匹配
 async function mapCloudBankToLocal(cloudBankId: number | string | null | undefined): Promise<number | null> {
-  const banks = await idb.listBanks()
+  // 2026-08-23 性能：一次同步内复用题库列表，避免每道题都全量 listBanks()
+  if (!bankMapCache) bankMapCache = { banks: await idb.listBanks() }
+  const banks = bankMapCache.banks
   if (typeof cloudBankId === 'string') {
     const byCloud = banks.find(b => b.cloud_id === cloudBankId)
     if (byCloud) return byCloud.id
