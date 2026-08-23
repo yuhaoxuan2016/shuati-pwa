@@ -75,7 +75,7 @@
         </div>
       </div>
       <div class="me-right">
-        <div class="me-health-wrap"><div class="me-health-fill" :style="{ width: memoryHealth + '%' }"></div></div>
+        <div v-if="memoryHealth > 0" class="me-health-wrap"><div class="me-health-fill" :style="{ width: memoryHealth + '%' }"></div></div>
         <div class="me-arrow">›</div>
       </div>
     </div>
