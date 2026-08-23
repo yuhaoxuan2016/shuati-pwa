@@ -101,18 +101,21 @@ export function calculateDailyTask(
   const reviewQuestions: number[] = []
   const newQuestions: number[] = []
 
+  // 2026-08-23 优化：用 Set/Map 替代嵌套 find/includes，O(N×R+M×B) → O(N+R+M+B)
+  const bankIdSet = new Set(plan.bankIds)
+  const recordMap = new Map<number, ReviewRecord>()
+  for (const r of reviewRecords) {
+    recordMap.set(r.question_id, r)
+  }
+
   // 筛选计划中的题库题目
-  const planQuestions = allQuestions.filter(q => plan.bankIds.includes(q.bankId))
+  const planQuestions = allQuestions.filter(q => bankIdSet.has(q.bankId))
 
   for (const question of planQuestions) {
-    const record = reviewRecords.find(r => r.question_id === question.id)
+    const record = recordMap.get(question.id)
 
     if (record) {
-      // 2026-08-23 修复：①字段命名统一 snake_case——此前用 record.questionId/lastReview 驼峰，
-      // 与 store 实际存储（question_id/last_review）不匹配 → find 永远不命中 → 所有题被当"新题"，
-      // 复习永远不触发（学习计划只涨新题、复习为空）。
-      // ②到期判断统一以 next_review 为准——此前用 lastReview+interval；
-      // 但写入方曾把 last_review 存成"下次复习时间"，语义错位导致复习期被再推后出错。
+      // 到期判断统一以 next_review 为准
       let due: Date
       if (record.next_review) {
         due = new Date(record.next_review)
@@ -384,4 +387,41 @@ export function calculateDynamicCap(bankQuestionCount: number, daysToExam: numbe
   const n = Math.max(0, bankQuestionCount || 0)
   const ratio = calculateDynamicRatio(daysToExam)
   return Math.round(Math.max(BANK_CAP_MIN, Math.min(BANK_CAP_MAX, n * ratio)))
+}
+
+// ============================================================
+// 2026-08-23 新增：内容去重（记忆统计避免重复题虚高）
+// 按题目 stem 内容去重，同一知识点只保留一份（最强记忆记录优先）
+// ============================================================
+
+/**
+ * 简单字符串哈希（FNV-1a 变体，用于 stem 去重）
+ * 不追求密码学安全，只要冲突率足够低即可
+ */
+export function simpleHash(str: string): number {
+  let hash = 2166136261
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i)
+    hash = (hash * 16777219) >>> 0
+  }
+  return hash
+}
+
+/**
+ * 按 stem 内容去重记忆列表
+ * 同一 stem（内容相同）的题，只保留「记忆强度最高」的那份记录
+ *
+ * @param items 带 questionId、stem、strength 的数组
+ * @returns 去重后的数组（同 stem 只保留最强记录）
+ */
+export function deduplicateByStem<T extends { questionId: number; stem: string; strength: number }>(items: T[]): T[] {
+  const bestMap = new Map<number, { item: T; hash: number }>()
+  for (const item of items) {
+    const h = simpleHash(item.stem.trim().toLowerCase())
+    const existing = bestMap.get(h)
+    if (!existing || item.strength > existing.item.strength) {
+      bestMap.set(h, { item, hash: h })
+    }
+  }
+  return Array.from(bestMap.values()).map(v => v.item)
 }

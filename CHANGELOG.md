@@ -6,6 +6,17 @@
 
 ---
 
+## [1.2.39] - 2026-08-23
+
+### 🔧 性能优化
+- **calculateDailyTask O(N²) → O(N)**：将 `reviewRecords.find(r => r.question_id === question.id)` 嵌套搜索优化为 `recordMap.get(question.id)` Map 查表；同时 `plan.bankIds.includes()` 优化为 `bankIdSet.has()`。4000 题计算从 ~300ms 降到 **3ms**。
+
+### 🐛 优化
+- **记忆统计内容去重**：新增 `deduplicateByStem`——同 stem（题目内容）的题只保留记忆强度最高的那份记录，避免重复题（如低级/高级题库同题）导致健康度和强度分布虚高。概览区改为显示「去重后知识点数」。
+- 新增 `simpleHash`（FNV-1a 变体）用于 stem 去重。
+
+---
+
 ## [1.2.38] - 2026-08-23
 
 ### 🐛 修复（严重）

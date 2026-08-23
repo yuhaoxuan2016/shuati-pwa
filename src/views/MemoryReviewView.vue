@@ -39,8 +39,8 @@
           <span class="ov-label">记忆健康度<span v-if="selectedBankId !== null" class="ov-cap">· {{ selectedBankName }}</span></span>
         </div>
         <div class="ov-item">
-          <span class="ov-value">{{ trackedCount }}</span>
-          <span class="ov-label">已追踪题目</span>
+          <span class="ov-value">{{ knowledgeCount }}</span>
+          <span class="ov-label">知识点数<span class="ov-cap">（去重后）</span></span>
         </div>
       </div>
 
@@ -246,7 +246,9 @@ async function loadData() {
 }
 
 // ===== 统计 =====
-// 有追踪记录的题目合集
+// 2026-08-23 内容去重：同 stem 的题只保留最强记录，避免重复题虚高统计
+import { deduplicateByStem, simpleHash } from '../lib/spaced-repetition'
+// 有追踪记录的题目合集（去重前，用于列表展示；去重后用于统计）
 const tracked = computed(() => {
   const set = new Set<number>()
   for (const q of questions.value) if (reviews.value.has(q.id)) set.add(q.id)
@@ -254,35 +256,51 @@ const tracked = computed(() => {
 })
 const trackedCount = computed(() => tracked.value.size)
 
-// 记忆强度分档
+// 去重后的追踪题目合集（同 stem 只保留最强记录，用于统计）
+const trackedDedup = computed(() => {
+  const items = Array.from(tracked.value).map(id => {
+    const q = questions.value.find(x => x.id === id)
+    const r = reviews.value.get(id)
+    return {
+      questionId: id,
+      stem: q?.stem || '',
+      strength: getMemoryStrength(r?.ease_factor ?? 2.5, r?.interval ?? 0),
+    }
+  })
+  return deduplicateByStem(items)
+})
+// 去重后知识点数（真正独立的知识点）
+const knowledgeCount = computed(() => trackedDedup.value.length)
+
+// 记忆强度分档（去重后统计，避免重复题虚高）
 const strongCount = computed(() => countByLevel('强'))
 const midCount = computed(() => countByLevel('中'))
 const weakCount = computed(() => countByLevel('弱'))
 const untrackedCount = computed(() => questions.value.length - trackedCount.value)
 function countByLevel(level: string): number {
   let c = 0
-  for (const id of tracked.value) {
-    const r = reviews.value.get(id)
-    if ((strengthLevel(getMemoryStrength(r?.ease_factor ?? 2.5, r?.interval ?? 0)) as string) === level) c++
+  for (const item of trackedDedup.value) {
+    const lvl = strengthLevel(item.strength)
+    if (lvl === level) c++
   }
   return c
 }
 
-// 健康度 = 有记录题目的平均强度（权重：强1 / 中0.6 / 弱0.3）
+// 健康度 = 去重后知识点的平均强度（权重：强1 / 中0.6 / 弱0.3）
 const healthPercent = computed(() => {
-  if (trackedCount.value === 0) return 0
+  if (knowledgeCount.value === 0) return 0
   let score = 0
-  for (const id of tracked.value) {
-    const lvl = strengthLevel(getMemoryStrength(reviews.value.get(id)?.ease_factor ?? 2.5, reviews.value.get(id)?.interval ?? 0))
+  for (const item of trackedDedup.value) {
+    const lvl = strengthLevel(item.strength)
     if (lvl === '强') score += 1
     else if (lvl === '中') score += 0.6
     else score += 0.3
   }
-  return Math.round((score / trackedCount.value) * 100)
+  return Math.round((score / knowledgeCount.value) * 100)
 })
 
 const dist = computed(() => {
-  const t = questions.value.length
+  const t = knowledgeCount.value  // 用去重后的知识点数作分母
   if (t === 0) return { strong: 0, mid: 0, weak: 0, untracked: 0 }
   const p = (n: number) => Math.round((n / t) * 100)
   return {
