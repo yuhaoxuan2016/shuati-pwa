@@ -302,3 +302,27 @@ export function isStaleReview(lastReview: string | null | undefined, staleDays =
   const elapsedDays = (Date.now() - t) / 86400000
   return elapsedDays > staleDays
 }
+
+// ============================================================
+// 2026-08-23 新增：按题库规模联动每日复习配额（大题库多练、小题库保底）
+// 解决「全局固定 50」对 4000 题大库太保守的问题
+// ============================================================
+
+/** 配额 = clamp(题库题数 × 比例%, 保底, 上限) */
+export const BANK_CAP_RATIO = 0.08        // 大库每天消化 8%
+export const BANK_CAP_MIN = 25            // 保底
+export const BANK_CAP_MAX = 200           // 上限
+
+/**
+ * 按单个题库的题目数计算该库每日复习配额
+ *  4000 题 → 8% = 320，但被上限 200 截断 → 200
+ *  1000 题 → 8% = 80
+ *  100 题  → 8% = 8，被保底 25 抬到 25
+ *
+ * @param bankQuestionCount 该题库题目数
+ * @returns 每日复习配额
+ */
+export function calculateBankReviewCap(bankQuestionCount: number): number {
+  const n = Math.max(0, bankQuestionCount || 0)
+  return Math.round(Math.max(BANK_CAP_MIN, Math.min(BANK_CAP_MAX, n * BANK_CAP_RATIO)))
+}

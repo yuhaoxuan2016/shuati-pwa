@@ -3,7 +3,7 @@ export const check = async () => null
 export type Update = any
 
 export async function checkForUpdates(opts: { silent?: boolean } = {}): Promise<any> {
-  return { hasUpdate: false, currentVersion: '1.2.35-web' }
+  return { hasUpdate: false, currentVersion: '1.2.36-web' }
 }
 
 export async function promptAndApplyUpdate(_update: any): Promise<boolean> {

@@ -86,6 +86,13 @@
       <div v-if="showUpdateLog" class="update-log">
         <h4>更新日志</h4>
         <div class="log-entry">
+          <span class="log-version">v1.2.36</span>
+          <ul>
+            <li>记忆复习新增「按题库独立复习」：顶部可切换全部/指定题库，每个题库按题目规模联动每日配额（8%、保底25、上限200），大题库不再受制于全局50题限制</li>
+            <li>记忆复习页支持单库范围选择，每库独立显示到期数与建议题数</li>
+          </ul>
+        </div>
+        <div class="log-entry">
           <span class="log-version">v1.2.35</span>
           <ul>
             <li>记忆复习新增防堆积机制：每日复习配额（联动学习计划，至少 50 题保底），超出自动顺延，杜绝「墨墨式」长时间不练后一次性涌出大量到期题</li>
@@ -496,7 +503,7 @@ import { ref, onMounted } from 'vue'
 import { api } from '../utils/api'
 import { toastSuccess, toastError } from '../utils/toast'
 
-const currentVersion = ref('1.2.35-web')
+const currentVersion = ref('1.2.36-web')
 const checkingUpdate = ref(false)
 const showUpdateLog = ref(false)
 
@@ -566,7 +573,7 @@ onMounted(async () => {
     console.error('获取数据库信息失败：', e)
     }
     // 读取应用版本（PWA 固定版本号）
-    currentVersion.value = '1.2.35-web'
+    currentVersion.value = '1.2.36-web'
     // 读取云同步配置
     loadCloudConfig()
     // 读取同步昵称

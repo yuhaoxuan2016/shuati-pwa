@@ -5,6 +5,23 @@
       <p class="sub">基于遗忘曲线的间隔重复 · 自动评估 + 可手动覆盖</p>
     </div>
 
+    <!-- 2026-08-23：复习范围选择（全部 / 各题库独立，配额随题库规模联动） -->
+    <div class="scope-bar">
+      <button
+        class="scope-btn"
+        :class="{ active: selectedBankId === null }"
+        @click="selectBank(null)"
+      >全部</button>
+      <button
+        v-for="b in banks"
+        :key="b.id"
+        class="scope-btn"
+        :class="{ active: selectedBankId === b.id }"
+        :title="`${b.name} · 每日建议 ${bankCap(b.id)} 题`"
+        @click="selectBank(b.id)"
+      >{{ b.name }}<span class="scope-count" v-if="bankDueCount(b.id) > 0">{{ bankDueCount(b.id) }}</span></button>
+    </div>
+
     <div v-if="!loaded" class="loading">加载中...</div>
 
     <!-- 概览 -->
@@ -12,11 +29,11 @@
       <div class="overview">
         <div class="ov-item">
           <span class="ov-value">{{ dueCount }}</span>
-          <span class="ov-label">今日待复习</span>
+          <span class="ov-label">今日待复习<span v-if="selectedBankId !== null" class="ov-cap">/ {{ activeCap }} 建议</span></span>
         </div>
         <div class="ov-item">
           <span class="ov-value">{{ healthPercent }}%</span>
-          <span class="ov-label">记忆健康度</span>
+          <span class="ov-label">记忆健康度<span v-if="selectedBankId !== null" class="ov-cap">· {{ selectedBankName }}</span></span>
         </div>
         <div class="ov-item">
           <span class="ov-value">{{ trackedCount }}</span>
@@ -76,7 +93,7 @@
         <div class="due-section" v-if="dueList.length || deferredCount > 0">
           <div class="due-head">
             <span class="due-title">📅 今日待复习
-              <span class="due-cap">（建议 {{ todayCap }} 题）</span>
+              <span class="due-cap">（建议 {{ activeCap }} 题）</span>
               <span v-if="deferredCount > 0" class="deferred-tag">另有 {{ deferredCount }} 题顺延</span>
             </span>
             <button class="start-btn" v-if="dueList.length" @click="startPractice">开始复习</button>
@@ -94,7 +111,7 @@
               <span class="due-meta">{{ item.bankName }} · {{ item.sinceText }}</span>
             </li>
           </ul>
-          <p v-if="deferredCount > 0" class="deferred-hint">为保持每天轻量复习，超出「今日建议 {{ todayCap }} 题」的部分已顺延到后面几天，不会堆积。</p>
+          <p v-if="deferredCount > 0" class="deferred-hint">为保持每天轻量复习，超出「今日建议 {{ activeCap }} 题」的部分已顺延到后面几天，不会堆积。</p>
         </div>
 
         <div v-else class="empty-state">
@@ -148,6 +165,7 @@ import {
   qualityLabel,
   labelToQuality,
   calculateDailyReviewCap,
+  calculateBankReviewCap,
   isStaleReview,
   DEFAULT_DAILY_REVIEW_CAP,
 } from '../lib/spaced-repetition'
@@ -167,6 +185,10 @@ const questions = ref<Question[]>([])
 const reviews = ref<Map<number, any>>(new Map()) // question_id -> 最新 review_record
 const bankNameMap = ref<Map<number, string>>(new Map())
 const favoriteIds = ref<Set<number>>(new Set())
+
+// 2026-08-23：按题库独立复习
+const banks = ref<any[]>([])
+const selectedBankId = ref<number | null>(null)
 
 // 练习状态
 const practicing = ref(false)
@@ -188,9 +210,10 @@ async function loadData() {
     // 题目（全量）
     const allQuestions = await idb.listAll('questions')
     questions.value = allQuestions
-    // 题库名映射
-    const banks = await api.listBanks()
-    bankNameMap.value = new Map(banks.map(b => [b.id, b.name]))
+    // 题库列表 + 题库名映射
+    const bankList = await api.listBanks()
+    banks.value = bankList
+    bankNameMap.value = new Map(bankList.map(b => [b.id, b.name]))
     // 复习记录（全量，取每题最新）
     const allReviews = await idb.listAll('review_records')
     reviews.value = new Map()
@@ -201,7 +224,7 @@ async function loadData() {
         reviews.value.set(r.question_id, r)
       }
     }
-    // 2026-08-23 防堆积：每日复习配额联动学习计划
+    // 2026-08-23 防堆积：每日复习配额联动学习计划（全库模式用；单库模式按库规模）
     const plans = await idb.listPlans()
     todayCap.value = calculateDailyReviewCap(plans)
     loaded.value = true
@@ -267,15 +290,40 @@ const todayEnd = computed(() => {
   return d.getTime()
 })
 
-// 2026-08-23 防堆积：每日复习配额（联动学习计划，至少有 50 题保底）
-const todayCap = ref(DEFAULT_DAILY_REVIEW_CAP)
-// 顺延数量（超出配额的部分）
-const deferredCount = computed(() => Math.max(0, allDueCount.value - todayCap.value))
+// 2026-08-23 按题库独立复习
+const selectedBank = computed(() => banks.value.find(b => b.id === selectedBankId.value) || null)
+const selectedBankName = computed(() => selectedBank.value?.name || '全部题库')
+// 题库题数
+function bankQuestionCount(bankId: number): number {
+  return questions.value.filter(q => q.bank_id === bankId).length
+}
+// 单库每日配额（按题库规模联动）
+function bankCap(bankId: number): number {
+  return calculateBankReviewCap(bankQuestionCount(bankId))
+}
+// 单库今日到期数（含顺延，用于 scope 角标）
+function bankDueCount(bankId: number): number {
+  return allDueList.value.filter(i => i.question.bank_id === bankId).length
+}
+function selectBank(id: number | null) {
+  selectedBankId.value = id
+}
 
-// 全量到期（未截断，用于统计顺延数）
+// 2026-08-23 防堆积：每日复习配额
+// 全库模式 → 联动学习计划（至少 50 保底）；单库模式 → 按该库规模联动
+const todayCap = ref(DEFAULT_DAILY_REVIEW_CAP)
+const activeCap = computed(() => {
+  if (selectedBankId.value !== null) return bankCap(selectedBankId.value)
+  return todayCap.value
+})
+// 顺延数量（超出配额的部分）
+const deferredCount = computed(() => Math.max(0, allDueCount.value - activeCap.value))
+
+// 全量到期（未截断，用于统计顺延数；按选中题库过滤）
 const allDueList = computed(() => {
   const list: { question: Question; strength: number; level: string; bankName: string; sinceText: string; stale: boolean }[] = []
   for (const q of questions.value) {
+    if (selectedBankId.value !== null && q.bank_id !== selectedBankId.value) continue
     const r = reviews.value.get(q.id)
     if (!r) continue
     const next = r.next_review ? new Date(r.next_review).getTime() : (r.last_review ? new Date(r.last_review).getTime() + (r.interval ?? 0) * 86400000 : 0)
@@ -298,7 +346,7 @@ const allDueList = computed(() => {
 const allDueCount = computed(() => allDueList.value.length)
 
 // 今日份（按配额截断，防堆积）
-const dueList = computed(() => allDueList.value.slice(0, todayCap.value))
+const dueList = computed(() => allDueList.value.slice(0, activeCap.value))
 const dueCount = computed(() => dueList.value.length)
 
 // 记忆薄弱（中/弱，且当前不碍事也列出来做重点）
@@ -449,11 +497,20 @@ async function onToggleFavorite() {
 
 .loading { text-align: center; padding: 48px; color: var(--color-text-tertiary); }
 
+/* 复习范围选择器（2026-08-23 按题库独立） */
+.scope-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.scope-btn { display: inline-flex; align-items: center; gap: 4px; padding: 7px 14px; border: 1px solid var(--color-border); border-radius: 20px; background: var(--color-card); color: var(--color-text-secondary); font-size: 13px; cursor: pointer; transition: all 0.12s; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scope-btn:hover { border-color: var(--color-primary); color: var(--color-primary); transform: translateY(-1px); }
+.scope-btn.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); font-weight: 500; }
+.scope-count { font-size: 11px; font-weight: 700; background: #fee2e2; color: #b91c1c; border-radius: 10px; padding: 1px 6px; flex-shrink: 0; }
+.scope-btn.active .scope-count { background: rgba(255,255,255,0.25); color: #fff; }
+
 /* 概览 */
 .overview { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
 .ov-item { flex: 1; min-width: 140px; display: flex; flex-direction: column; align-items: center; padding: 18px; background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); }
 .ov-value { font-size: 32px; font-weight: 700; color: var(--color-primary); }
 .ov-label { margin-top: 4px; font-size: 13px; color: var(--color-text-secondary); }
+.ov-cap { display: block; font-size: 11px; color: var(--color-text-tertiary); margin-top: 2px; }
 
 /* 分布 */
 .dist-section { margin-bottom: 24px; padding: 18px; background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-lg); }
