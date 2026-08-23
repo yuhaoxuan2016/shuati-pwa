@@ -272,8 +272,14 @@ export async function restoreBackup(data: any, onProgress?: (msg: string) => voi
   if (keys.length === 0) throw new Error('备份文件未包含任何可恢复的数据（题库/题目等）')
   for (const key of keys) {
     const store = storeMap[key]
-    const rows = data[key] as any[]
+    let rows = data[key] as any[]
     onProgress?.(`正在恢复 ${key}（${rows.length} 条）...`)
+    // 2026-08-23 云同步防重复：恢复备份的题库/题目标记为「已同步」（补 synced_at），
+    // 避免导入后立即点同步，把整库题目当「待推送」重复上传云端。备份本就是已同步的干净数据。
+    if (store === 'quiz_banks' || store === 'questions') {
+      const now = new Date().toISOString()
+      rows = rows.map(r => ({ ...r, synced_at: r.synced_at ?? now }))
+    }
     await m.clearStore(store)
     if (rows.length) await m.bulkPut(store, rows)
   }

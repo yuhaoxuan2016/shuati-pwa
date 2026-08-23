@@ -355,7 +355,19 @@ export async function pushToCloud(): Promise<{ pushed: number }> {
     for (const coll of CLOUD_COLLECTIONS) {
       const localRows = await listLocalAll(coll)
       // 增量过滤：有 synced_at = 已同步且本地未改动 → 跳过；settings 永远全推（量小）
-      const dirty = coll === 'settings' ? localRows : localRows.filter(r => !r.synced_at)
+      let dirty = coll === 'settings' ? localRows : localRows.filter(r => !r.synced_at)
+      // 2026-08-23 推送侧去重（防本地重复题反复上传）：
+      // 题目若因历史叠加在本地产生同 bank_ref + stem 的多份副本（都无 synced_at），
+      // 只推内容唯一的一条，其余视为同源跳过——避免推送侧再次放大云端重复。
+      if (coll === 'questions') {
+        const seenByStem = new Set<string>()
+        dirty = dirty.filter(r => {
+          const key = String(r.bank_ref ?? r._local_bank_id ?? r.bank_id ?? '') + '||' + String(r.stem || '').trim()
+          if (seenByStem.has(key)) return false
+          seenByStem.add(key)
+          return true
+        })
+      }
       for (let i = 0; i < dirty.length; i += PUSH_CONCURRENCY) {
         const batch = dirty.slice(i, i + PUSH_CONCURRENCY)
         const results = await Promise.allSettled(batch.map(r => pushOne(coll, r, syncKey)))
