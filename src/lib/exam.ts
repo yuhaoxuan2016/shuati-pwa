@@ -212,6 +212,32 @@ async function ensureCloud(): Promise<boolean> {
 
 function isCloud(): boolean { return cloudReady && !!cloudDb }
 
+/** 刷新匿名登录态（token 过期时调用，重置 cloudReady 强制重新登录） */
+async function refreshAuth(): Promise<boolean> {
+  if (!cloudApp) return false
+  try {
+    const auth = cloudApp.auth({ persistence: 'local' })
+    // 先尝试 signOut 清除过期态，再重新匿名登录
+    try { await auth.signOut() } catch { /* ignore */ }
+    await auth.anonymousAuthProvider().signIn()
+    const state = await auth.getLoginState()
+    cachedUid = state?.user?.uid || state?.uid || null
+    cloudReady = true
+    return true
+  } catch (e) {
+    console.warn('刷新匿名登录态失败：', e)
+    cloudReady = false
+    return false
+  }
+}
+
+/** 判断错误是否为权限/认证类（需要刷新登录态重试） */
+function isAuthError(e: any): boolean {
+  const msg = String(e?.message || e?.code || e || '').toLowerCase()
+  return msg.includes('permission denied') || msg.includes('security rules')
+    || msg.includes('unauthorized') || msg.includes('auth') || msg.includes('token')
+}
+
 // 超时保护：CloudBase 请求异常挂起时避免页面永远卡在"加载中"
 function withTimeout<T>(p: Promise<T>, ms = 15000, label = '请求'): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -588,36 +614,44 @@ export async function submitExamResult(result: ExamResult): Promise<void> {
     result.query_code = seed + '-' + rand
   }
   if (await ensureCloud() && isCloud()) {
-    // 同一个人（同一 openid）同一考试重复交卷时覆盖
-    // 查询带当前用户 openid，避免误覆盖同名考生答卷
-    const uid = await getCurrentUid()
-    if (uid) {
-      // 仅当能拿到 uid 时才做"查重后覆盖"；uid 为 null 时直接新增，避免命中他人答卷导致 update 报错
-      const existing = await cloudDb.collection('exam_results')
-        .where({
-          exam_id: result.exam_id,
-          student_name: result.student_name,
-          _openid: uid,
-        })
-        .get()
-      if (existing.data?.length) {
-        await cloudDb.collection('exam_results').doc(existing.data[0]._id).update({
-          answers: result.answers,
-          correct: result.correct,
-          wrong: result.wrong,
-          unanswered: result.unanswered,
-          score: result.score,
-          accuracy: result.accuracy,
-          duration_ms: result.duration_ms,
-          submitted_at: result.submitted_at,
-          query_code: result.query_code,
-        })
-        return
+    // 云端写入封装：碰到 auth 错误时刷新登录态重试一次
+    const writeToCloud = async (): Promise<boolean> => {
+      const uid = await getCurrentUid()
+      if (uid) {
+        const existing = await cloudDb.collection('exam_results')
+          .where({ exam_id: result.exam_id, student_name: result.student_name, _openid: uid })
+          .get()
+        if (existing.data?.length) {
+          await cloudDb.collection('exam_results').doc(existing.data[0]._id).update({
+            answers: result.answers, correct: result.correct, wrong: result.wrong,
+            unanswered: result.unanswered, score: result.score, accuracy: result.accuracy,
+            duration_ms: result.duration_ms, submitted_at: result.submitted_at, query_code: result.query_code,
+          })
+          return true
+        }
       }
+      await cloudDb.collection('exam_results').add(result)
+      return true
     }
-    // 新答卷：直接新增（服务端会自动记录 _openid 归属）
-    await cloudDb.collection('exam_results').add(result)
-    return
+    try {
+      await writeToCloud()
+      return
+    } catch (e) {
+      if (isAuthError(e)) {
+        console.warn('交卷遇到权限错误，尝试刷新登录态重试…')
+        if (await refreshAuth()) {
+          try {
+            await writeToCloud()
+            return
+          } catch (e2) {
+            // 重试仍失败，抛出第二次错误
+            throw e2
+          }
+        }
+      }
+      // 非 auth 错误或刷新失败，抛出原始错误
+      throw e
+    }
   }
   const results = getLocalResults()
   const idx = results.findIndex(r => r.exam_id === result.exam_id && r.student_name === result.student_name)
