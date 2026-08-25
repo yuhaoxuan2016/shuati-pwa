@@ -324,12 +324,18 @@ function clearProgress() {
   try { localStorage.removeItem(progressKey(examId, studentName.value)) } catch {}
 }
 
-// 每次答案变化自动保存（deep watch + 500ms 防抖）
+// 每次答案变化或切题时自动保存（deep watch + 500ms 防抖）
 watch(answers, () => {
   if (!studentName.value) return
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = window.setTimeout(saveProgress, 500)
 }, { deep: true })
+// 切题时也保存 current（翻页检查不改答案的情况）
+watch(current, () => {
+  if (!studentName.value) return
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = window.setTimeout(saveProgress, 300)
+})
 
 const currentQuestion = computed(() => exam.value?.questions[current.value] || null)
 // 切题时重算选项乱序映射（每题独立随机）
