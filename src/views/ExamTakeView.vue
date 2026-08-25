@@ -80,6 +80,7 @@
           <span class="tb-student">👤 {{ studentName }}</span>
         </div>
         <div class="tb-timer" :class="{ 'time-up': timeUp }">⏱ {{ formatTime(remaining) }}</div>
+        <span v-if="progressSaved" class="tb-saved">✓ 已保存</span>
         <button class="submit-exam" @click="submit">交卷</button>
       </div>
 
@@ -293,6 +294,43 @@ let startMs: number | null = null
 let timerId: number | null = null
 let deadlineTimerId: number | null = null
 
+// ===== 考试进度自动保存（localStorage） =====
+const progressSaved = ref(false)   // 显示「已保存」提示
+let saveTimer: number | null = null
+
+function progressKey(eid: string, name: string) {
+  return `exam_progress_${eid}_${name}`
+}
+
+function saveProgress() {
+  if (!studentName.value || !exam.value) return
+  try {
+    const data = {
+      answers: answers.value,
+      current: current.value,
+      startMs,
+      savedAt: Date.now(),
+    }
+    localStorage.setItem(progressKey(examId, studentName.value), JSON.stringify(data))
+    progressSaved.value = true
+    // 2 秒后隐藏提示
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = window.setTimeout(() => { progressSaved.value = false }, 2000)
+  } catch { /* localStorage 满了静默忽略 */ }
+}
+
+function clearProgress() {
+  if (!studentName.value) return
+  try { localStorage.removeItem(progressKey(examId, studentName.value)) } catch {}
+}
+
+// 每次答案变化自动保存（deep watch + 500ms 防抖）
+watch(answers, () => {
+  if (!studentName.value) return
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = window.setTimeout(saveProgress, 500)
+}, { deep: true })
+
 const currentQuestion = computed(() => exam.value?.questions[current.value] || null)
 // 切题时重算选项乱序映射（每题独立随机）
 watch([current, shuffleOptions], () => buildDisplayMap())
@@ -369,8 +407,38 @@ function startExam() {
   // 截止时间检查：已到截止时间则禁止进入
   if (checkDeadline()) return
   studentName.value = nameInput.value.trim()
-  startMs = Date.now()
-  remaining.value = exam.value!.duration_minutes * 60
+
+  // 检查是否有未完成的进度
+  let restored = false
+  try {
+    const raw = localStorage.getItem(progressKey(examId, studentName.value))
+    if (raw) {
+      const saved = JSON.parse(raw)
+      if (saved?.answers && saved.savedAt) {
+        // 只恢复 24 小时内的进度（防止太久远的脏数据）
+        if (Date.now() - saved.savedAt < 24 * 60 * 60 * 1000) {
+          const elapsed = Math.floor((Date.now() - saved.startMs) / 1000)
+          const total = exam.value!.duration_minutes * 60
+          const rem = total - elapsed
+          if (rem > 0 && confirm('检测到上次未完成的答题进度，是否恢复？\n（选「取消」将重新开始）')) {
+            answers.value = saved.answers
+            current.value = saved.current || 0
+            startMs = saved.startMs
+            remaining.value = rem
+            restored = true
+            toastSuccess('已恢复上次进度')
+          }
+        }
+        // 过期或用户拒绝 → 清除旧存档
+        if (!restored) clearProgress()
+      }
+    }
+  } catch { /* JSON 解析失败忽略 */ }
+
+  if (!restored) {
+    startMs = Date.now()
+    remaining.value = exam.value!.duration_minutes * 60
+  }
   timerId = window.setInterval(tick, 1000)
   // 截止时间到点自动强制收卷
   if (exam.value!.deadline) {
@@ -441,6 +509,7 @@ async function doSubmit(reason: string) {
       submitted_at: new Date().toISOString(),
     }
     await submitExamResult(result)
+    clearProgress() // 交卷成功，清除本地存档
     // 保存展示数据后切到成绩视图
     finishedCode.value = result.query_code || ''
     finishedExam.value = exam.value
@@ -545,6 +614,8 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   if (timerId) clearInterval(timerId)
   if (deadlineTimerId) clearTimeout(deadlineTimerId)
+  // 页面离开时保存一次（切换后台/关闭页面）
+  if (studentName.value && !finishedResult.value) saveProgress()
 })
 </script>
 
@@ -578,6 +649,8 @@ onBeforeUnmount(() => {
 .tb-timer { font-family: monospace; font-size: 15px; font-weight: 700; padding: 4px 12px; background: var(--color-info-light); color: var(--color-info); border-radius: var(--radius-md); }
 .tb-timer.time-up { background: var(--color-danger-light); color: var(--color-danger); animation: pulse 1s infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+.tb-saved { font-size: 12px; color: var(--color-success, #42b883); white-space: nowrap; animation: fadeIn 0.3s; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 .submit-exam { padding: 8px 18px; background: var(--color-danger); color: #fff; border: none; border-radius: var(--radius-md); font-size: 13px; font-weight: 600; cursor: pointer; }
 
 .progress-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
