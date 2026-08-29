@@ -4,6 +4,7 @@
     <div v-if="!started" class="config-wrap">
       <div class="config-header">
         <h2>🎲 综合抽题考试</h2>
+        <button class="history-btn" @click="openHistory">📜 历史记录（{{ historyCount }}）</button>
         <p class="config-sub">从多个题库随机抽题，合成一张试卷。每道题仍归属原题库，练习记录/错题/收藏各自归位。</p>
       </div>
 
@@ -121,6 +122,10 @@
           <div class="stat-card highlight"><div class="stat-num">{{ result.score }}</div><div class="stat-label">得分</div></div>
         </div>
         <p class="result-hint">总分 100 · 正确率 {{ result.accuracy }}%</p>
+        <div v-if="lastRecordCode" class="record-box">
+          <div class="record-label">📋 本场记录码（保存好，可在历史记录中回看）</div>
+          <div class="record-value" @click="copyRecordCode">{{ lastRecordCode }} <span class="copy-tip">点击复制</span></div>
+        </div>
         <div class="result-actions">
           <button @click="resetAll">再考一次</button>
           <button @click="goHome">返回首页</button>
@@ -200,6 +205,32 @@
         </div>
       </div>
     </div>
+    <!-- 历史记录弹窗 -->
+    <Teleport to="body">
+      <div v-if="showHistory" class="modal-mask" @click.self="showHistory = false">
+        <div class="modal-card">
+          <div class="modal-body history-modal">
+            <h3>📜 综合抽题历史记录</h3>
+            <p v-if="!historyRecords.length" class="hint">还没有历史记录，考一场试试~</p>
+            <div v-else class="history-list">
+              <div v-for="r in historyRecords" :key="r.id" class="history-item">
+                <div class="history-info">
+                  <div class="history-score">{{ r.score }} 分</div>
+                  <div class="history-meta">
+                    正确率 {{ r.accuracy }}% · {{ r.correct }}✓ {{ r.wrong }}✗ {{ r.unanswered }}○
+                    · {{ formatDate(r.created_at) }}
+                    <span v-if="r.duration_ms"> · 用时 {{ formatDuration(r.duration_ms) }}</span>
+                  </div>
+                  <div class="history-code" v-if="r.query_code">记录码：{{ r.query_code }}</div>
+                </div>
+                <button class="history-del" @click="deleteHistory(r.id)" title="删除">🗑</button>
+              </div>
+            </div>
+          </div>
+          <button class="modal-close" @click="showHistory = false">关闭</button>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -209,6 +240,7 @@ import { useRouter } from 'vue-router'
 import { useBankStore } from '../stores/bank'
 import { api, Question } from '../utils/api'
 import { classifyQuestionType, gradeByState, isJudgeLike } from '../lib/exam'
+import { idb } from '../lib/db'
 import { toastError, toastSuccess } from '../utils/toast'
 import QuestionCard, { type QuestionState } from '../components/QuestionCard.vue'
 
@@ -412,6 +444,15 @@ async function submit() {
   for (const r of recs) {
     try { await api.recordPractice(r) } catch (e) { console.error('记录练习失败：', e) }
   }
+  // 保存历史记录 + 生成记录码
+  try {
+    const code = genRecordCode()
+    await saveRecord(code)
+    lastRecordCode.value = code
+    historyCount.value++
+  } catch (e) {
+    console.warn('保存综合抽题记录失败：', e)
+  }
 }
 
 // 交卷统一写入练习记录用的答案格式：判断 'true'/'false'、选择题字母串、填空原文
@@ -473,6 +514,78 @@ function getDotClass(listIdx: number, qid: number): string {
   return classes.join(' ')
 }
 
+// 历史记录
+const showHistory = ref(false)
+const historyCount = ref(0)
+const historyRecords = ref<any[]>([])
+const lastRecordCode = ref('')
+
+onMounted(async () => {
+  try { historyCount.value = (await idb.listComposeRecords()).filter(r => r.type === 'mix').length } catch { /* ignore */ }
+})
+
+function genRecordCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let rand = ''
+  for (let i = 0; i < 4; i++) rand += chars[Math.floor(Math.random() * chars.length)]
+  return 'M' + rand
+}
+
+async function saveRecord(code: string) {
+  const answers: Record<number, any> = {}
+  for (const [qid, st] of answerStates.value) {
+    answers[Number(qid)] = JSON.parse(JSON.stringify(st))
+  }
+  await idb.addComposeRecord(JSON.parse(JSON.stringify({
+    type: 'mix',
+    query_code: code,
+    created_at: new Date().toISOString(),
+    duration_ms: examStartMs ? Date.now() - examStartMs : null,
+    score: result.value.score,
+    accuracy: result.value.accuracy,
+    correct: result.value.correct,
+    wrong: result.value.wrong,
+    unanswered: result.value.unanswered,
+    questions: examQuestions.value,
+    answers,
+    bankBreakdown: bankBreakdown.value,
+  })))
+}
+
+async function openHistory() {
+  try {
+    historyRecords.value = (await idb.listComposeRecords()).filter(r => r.type === 'mix')
+    showHistory.value = true
+  } catch (e) {
+    toastError('加载历史记录失败：' + (e instanceof Error ? e.message : String(e)))
+  }
+}
+
+async function deleteHistory(id: number) {
+  try {
+    await idb.deleteComposeRecord(id)
+    historyRecords.value = historyRecords.value.filter(r => r.id !== id)
+    historyCount.value--
+  } catch (e) {
+    toastError('删除失败：' + (e instanceof Error ? e.message : String(e)))
+  }
+}
+
+function formatDate(iso: string): string {
+  try { return new Date(iso).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }
+  catch { return iso }
+}
+function formatDuration(ms: number): string {
+  const sec = Math.round(ms / 1000)
+  const m = Math.floor(sec / 60), s = sec % 60
+  return m > 0 ? `${m}分${s}秒` : `${s}秒`
+}
+async function copyRecordCode() {
+  if (!lastRecordCode.value) return
+  try { await navigator.clipboard.writeText(lastRecordCode.value); toastSuccess('记录码已复制') }
+  catch { toastError('复制失败，请手动记录') }
+}
+
 // 错题加入错题本
 const addingWrong = ref(false)
 const addWrongMsg = ref('')
@@ -517,6 +630,8 @@ function resetAll() {
   examQuestions.value = []
   answerStates.value = new Map()
   current.value = 0
+  lastRecordCode.value = ''
+  addWrongMsg.value = ''
 }
 function goHome() {
   stopTimer()
@@ -610,6 +725,22 @@ onBeforeUnmount(() => stopTimer())
 .add-wrong-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .add-wrong-msg { font-size: 13px; color: var(--color-success-deep); margin: 4px 0 0; }
 .add-wrong-msg.warn { color: var(--color-danger); }
+.record-box { margin: 16px 0 12px; padding: 14px; background: var(--color-success-light); border: 1px dashed var(--color-success-strong); border-radius: var(--radius-md); }
+.record-label { font-size: 12px; color: var(--color-success-deep); margin-bottom: 8px; }
+.record-value { font-size: 24px; font-weight: 800; letter-spacing: 2px; color: var(--color-success-deep); cursor: pointer; user-select: all; font-family: monospace; }
+.record-value:hover .copy-tip { opacity: 1; }
+.copy-tip { font-size: 11px; color: var(--color-text-tertiary); opacity: 0; transition: opacity 0.15s; }
+.history-btn { margin-top: 10px; padding: 7px 16px; border: 1px solid var(--color-primary); border-radius: var(--radius-md); background: var(--color-primary-light); color: var(--color-primary); cursor: pointer; font-size: 13px; font-weight: 500; }
+.history-btn:hover { background: var(--color-primary); color: #fff; }
+.history-modal { text-align: left; }
+.history-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.history-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--color-border-light); border-radius: var(--radius-md); }
+.history-info { min-width: 0; }
+.history-score { font-size: 18px; font-weight: 700; color: var(--color-primary); }
+.history-meta { font-size: 12px; color: var(--color-text-tertiary); margin-top: 2px; }
+.history-code { font-size: 11px; color: var(--color-text-secondary); font-family: monospace; }
+.history-del { border: none; background: none; cursor: pointer; font-size: 16px; opacity: 0.5; }
+.history-del:hover { opacity: 1; }
 .bank-breakdown { margin-top: 28px; padding: 16px; background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-md); text-align: left; }
 .bank-breakdown h4 { margin: 0 0 10px 0; font-size: 14px; }
 .breakdown-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--color-border-light); font-size: 13px; }
