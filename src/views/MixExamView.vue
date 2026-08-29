@@ -124,7 +124,11 @@
         <div class="result-actions">
           <button @click="resetAll">再考一次</button>
           <button @click="goHome">返回首页</button>
+          <button class="add-wrong-btn" :disabled="addingWrong" @click="addWrongToBook">
+            {{ addingWrong ? '添加中...' : '📥 错题加入错题本' }}
+          </button>
         </div>
+        <p v-if="addWrongMsg" class="add-wrong-msg" :class="{ warn: addWrongErr }">{{ addWrongMsg }}</p>
         <!-- 按题库统计 -->
         <div class="bank-breakdown" v-if="bankBreakdown.length">
           <h4>分题库成绩</h4>
@@ -469,6 +473,43 @@ function getDotClass(listIdx: number, qid: number): string {
   return classes.join(' ')
 }
 
+// 错题加入错题本
+const addingWrong = ref(false)
+const addWrongMsg = ref('')
+const addWrongErr = ref(false)
+
+async function addWrongToBook() {
+  if (addingWrong.value) return
+  addingWrong.value = true
+  addWrongMsg.value = ''
+  addWrongErr.value = false
+  try {
+    let added = 0, skipped = 0
+    for (const q of examQuestions.value) {
+      const st = answerStates.value.get(q.id)
+      if (!st || !st.submitted || st.isCorrect) continue // 跳过未答和正确的
+      if (!q.bank_id || q.bank_id <= 0) { skipped++; continue }
+      await api.markWrong(q.bank_id, q.id)
+      added++
+    }
+    if (added > 0 && skipped > 0) {
+      addWrongMsg.value = `已添加 ${added} 道错题到错题本（${skipped} 题无本地题库已跳过）`
+    } else if (added > 0) {
+      addWrongMsg.value = `已添加 ${added} 道错题到错题本`
+    } else if (skipped > 0) {
+      addWrongMsg.value = `${skipped} 道错题均无本地题库，请先导入题库后再添加`
+      addWrongErr.value = true
+    } else {
+      addWrongMsg.value = '本次考试没有错题，无需添加'
+    }
+  } catch (e) {
+    addWrongMsg.value = '添加失败：' + (e instanceof Error ? e.message : String(e))
+    addWrongErr.value = true
+  } finally {
+    addingWrong.value = false
+  }
+}
+
 function resetAll() {
   stopTimer()
   started.value = false
@@ -565,6 +606,10 @@ onBeforeUnmount(() => stopTimer())
 .result-actions { margin-top: 20px; }
 .result-actions button { margin: 8px; padding: 9px 20px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-card); cursor: pointer; font-size: 14px; }
 .result-actions button:first-child { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.add-wrong-btn { background: var(--color-primary) !important; color: #fff !important; border-color: var(--color-primary) !important; }
+.add-wrong-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.add-wrong-msg { font-size: 13px; color: var(--color-success-deep); margin: 4px 0 0; }
+.add-wrong-msg.warn { color: var(--color-danger); }
 .bank-breakdown { margin-top: 28px; padding: 16px; background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-md); text-align: left; }
 .bank-breakdown h4 { margin: 0 0 10px 0; font-size: 14px; }
 .breakdown-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--color-border-light); font-size: 13px; }

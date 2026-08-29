@@ -76,9 +76,13 @@
         </div>
         <div class="result-actions">
           <button class="review-btn" @click="openWrongReview">🔍 查看错题（{{ wrongCount }}）</button>
+          <button class="add-wrong-btn" :disabled="addingWrong" @click="addWrongToBook">
+            {{ addingWrong ? '添加中...' : '📥 错题加入错题本' }}
+          </button>
           <button @click="resetAll">🎲 再考一次（换新卷）</button>
           <button @click="goHome">返回首页</button>
         </div>
+        <p v-if="addWrongMsg" class="add-wrong-msg" :class="{ warn: addWrongErr }">{{ addWrongMsg }}</p>
         <!-- 分等级成绩 -->
         <div class="level-breakdown" v-if="levelBreakdown.length">
           <h4>分等级成绩</h4>
@@ -565,6 +569,43 @@ function onStateChange(state: QuestionState) {
 function onAnswered() {
   // 综合大考为自测模式：不写练习记录/错题本，交卷后看成绩与分等级明细
 }
+
+// 错题加入错题本
+const addingWrong = ref(false)
+const addWrongMsg = ref('')
+const addWrongErr = ref(false)
+
+async function addWrongToBook() {
+  if (addingWrong.value) return
+  addingWrong.value = true
+  addWrongMsg.value = ''
+  addWrongErr.value = false
+  try {
+    let added = 0, skipped = 0
+    for (const q of examQuestions.value) {
+      const st = answerStates.value.get(q.id)
+      if (!st || !st.submitted || st.isCorrect) continue
+      if (!q.bank_id || q.bank_id <= 0) { skipped++; continue }
+      await idb.markWrong(q.bank_id, q.id)
+      added++
+    }
+    if (added > 0 && skipped > 0) {
+      addWrongMsg.value = `已添加 ${added} 道错题到错题本（${skipped} 题无本地题库已跳过）`
+    } else if (added > 0) {
+      addWrongMsg.value = `已添加 ${added} 道错题到错题本`
+    } else if (skipped > 0) {
+      addWrongMsg.value = `综合大考题目来自云端公共题库，暂无本地题库关联，请先导入题库后再添加`
+      addWrongErr.value = true
+    } else {
+      addWrongMsg.value = '本次考试没有错题，无需添加'
+    }
+  } catch (e) {
+    addWrongMsg.value = '添加失败：' + (e instanceof Error ? e.message : String(e))
+    addWrongErr.value = true
+  } finally {
+    addingWrong.value = false
+  }
+}
 function onToggleFavorite() {
   // 云端题不在本地收藏体系内，静默
 }
@@ -736,6 +777,10 @@ onBeforeUnmount(() => stopTimer())
 .result-actions { margin-top: 20px; }
 .result-actions button { margin: 8px; padding: 9px 20px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-card); cursor: pointer; font-size: 14px; }
 .result-actions button:first-child { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.add-wrong-btn { background: var(--color-primary) !important; color: #fff !important; border-color: var(--color-primary) !important; }
+.add-wrong-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.add-wrong-msg { font-size: 13px; color: var(--color-success-deep); margin: 4px 0 0; text-align: center; }
+.add-wrong-msg.warn { color: var(--color-danger); }
 .level-breakdown { margin-top: 28px; padding: 16px; background: var(--color-card); border: 1px solid var(--color-border-light); border-radius: var(--radius-md); text-align: left; }
 .level-breakdown h4 { margin: 0 0 10px 0; font-size: 14px; }
 .breakdown-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--color-border-light); font-size: 13px; }

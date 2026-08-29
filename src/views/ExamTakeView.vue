@@ -25,7 +25,11 @@
 
         <div class="review-actions">
           <button class="review-btn" @click="showReview = true">🔍 查询码回看错题</button>
+          <button class="review-btn add-wrong-btn" :disabled="addingWrong" @click="addExamWrongsToBook">
+            {{ addingWrong ? '添加中...' : '📥 错题加入错题本' }}
+          </button>
         </div>
+        <p v-if="addWrongMsg" class="add-wrong-msg" :class="{ warn: addWrongErr }">{{ addWrongMsg }}</p>
         <p class="result-tip">感谢作答，可以关闭本页面了。</p>
       </div>
     </div>
@@ -599,6 +603,48 @@ function rawHas(raw: string | null, oi: number): boolean {
 const finishedResult = ref<ExamResult | null>(null)
 const finishedExam = ref<Exam | null>(null)
 
+// 错题加入错题本
+const addingWrong = ref(false)
+const addWrongMsg = ref('')
+const addWrongErr = ref(false)
+
+async function addExamWrongsToBook() {
+  if (addingWrong.value) return
+  const ex = finishedExam.value
+  const res = finishedResult.value
+  if (!ex || !res) return
+  addingWrong.value = true
+  addWrongMsg.value = ''
+  addWrongErr.value = false
+  try {
+    const { getWrongQuestions } = await import('../lib/exam')
+    const api = await import('../utils/api')
+    const wrongs = getWrongQuestions(ex, res)
+    let added = 0, skipped = 0
+    for (const w of wrongs) {
+      const q = w.question
+      if (!q.bank_id || q.bank_id <= 0) { skipped++; continue }
+      await api.default.markWrong(q.bank_id, q.id)
+      added++
+    }
+    if (added > 0 && skipped > 0) {
+      addWrongMsg.value = `已添加 ${added} 道错题到错题本（${skipped} 题无本地题库已跳过）`
+    } else if (added > 0) {
+      addWrongMsg.value = `已添加 ${added} 道错题到错题本`
+    } else if (skipped > 0) {
+      addWrongMsg.value = `${skipped} 道错题均无本地题库，请先导入题库后再添加`
+      addWrongErr.value = true
+    } else {
+      addWrongMsg.value = '本次考试没有错题，无需添加'
+    }
+  } catch (e) {
+    addWrongMsg.value = '添加失败：' + errMsg(e)
+    addWrongErr.value = true
+  } finally {
+    addingWrong.value = false
+  }
+}
+
 onMounted(async () => {
   try {
     exam.value = await getExam(examId)
@@ -715,7 +761,11 @@ onBeforeUnmount(() => {
 .code-value { font-size: 24px; font-weight: 800; letter-spacing: 2px; color: var(--color-success-deep); cursor: pointer; user-select: all; font-family: monospace; }
 .code-value:hover .copy-tip { opacity: 1; }
 .copy-tip { font-size: 11px; color: var(--color-text-tertiary); opacity: 0; transition: opacity 0.15s; }
-.review-actions { margin: 8px 0 14px; }
+.review-actions { display: flex; gap: 8px; margin: 8px 0 14px; flex-wrap: wrap; justify-content: center; }
+.add-wrong-btn { background: var(--color-primary); color: #fff; }
+.add-wrong-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.add-wrong-msg { font-size: 13px; color: var(--color-success-deep); margin: 4px 0 0; }
+.add-wrong-msg.warn { color: var(--color-danger); }
 .review-btn { padding: 8px 18px; background: var(--color-success-strong); color: #fff; border: none; border-radius: var(--radius-md); font-size: 13px; font-weight: 500; cursor: pointer; }
 .review-btn:hover { background: var(--color-success-deep); }
 .review-btn:disabled { opacity: 0.5; cursor: not-allowed; }
