@@ -131,13 +131,14 @@ export const api = {
   async restartApp(): Promise<void> { location.reload() },
   async quitApp(): Promise<void> { window.close() },
   // === 练习记录 ===
-  // 返回 { autoMastered, streak }：autoMastered=true 表示本次答对触发「自动移入已掌握」；null 表示无错题本动作
-  async recordPractice(r: { bank_id: number; question_id: number; user_answer: string | null; is_correct: boolean; duration_ms: number | null }): Promise<{ autoMastered: boolean; streak: number } | null> {
+  // 返回 { autoMastered, streak, totalWrong }：autoMastered=true 表示本次答对触发「自动移入已掌握」；null 表示无错题本动作
+  async recordPractice(r: { bank_id: number; question_id: number; user_answer: string | null; is_correct: boolean; duration_ms: number | null }): Promise<{ autoMastered: boolean; streak: number; totalWrong?: number } | null> {
     await idb.recordPractice({ ...r, practiced_at: new Date().toISOString() })
-    let signal: { autoMastered: boolean; streak: number } | null = null
+    let signal: { autoMastered: boolean; streak: number; totalWrong?: number } | null = null
     if (!r.is_correct) {
-      // 答错自动加入错题本（连续答对计数清零）
-      await idb.markWrong(r.bank_id, r.question_id, 0)
+      // 答错自动加入错题本（连续答对计数清零 + 累计错误 +1），返回累计做错次数
+      const totalWrong = await idb.markWrong(r.bank_id, r.question_id, 0)
+      signal = { autoMastered: false, streak: 0, totalWrong }
     } else {
       // 答对：若该题在错题本 → 连续答对 +1；达到阈值自动转「已掌握」（2026-08-19 新增）
       const rec = await idb.getWrongRecord(r.bank_id, r.question_id)
@@ -167,6 +168,7 @@ export const api = {
   // 错题本完整记录（含 correct_streak，供「连对 n 次」展示）
   async listWrongRecords(bankId: number): Promise<any[]> { return idb.listWrongRecords(bankId) },
   async listMastered(bankId: number): Promise<number[]> { return idb.listMastered(bankId) },
+  async listMasteredRecords(bankId: number): Promise<any[]> { return idb.listMasteredRecords(bankId) },
   async markWrongMastered(bankId: number, questionId: number): Promise<void> {
     // 从错题表移除 → 记录云端删除标记（P1.2）
     markCloudDeleted('wrong_questions', bankId, questionId)

@@ -642,7 +642,8 @@ async function writeLocal(coll: CloudCollection, doc: any): Promise<'added' | 'u
         }
         else if (coll === 'wrong_questions') {
           // 2026-08-19：保留云端 correct_streak（连续答对计数）；云端旧记录无该字段时保留本地计数
-          await idb.markWrong(bankId, r.question_id, typeof r.correct_streak === 'number' ? r.correct_streak : undefined)
+          const tw = typeof r.total_wrong === 'number' ? r.total_wrong : undefined
+          await idb.markWrong(bankId, r.question_id, typeof r.correct_streak === 'number' ? r.correct_streak : undefined, tw)
           await stampSyncedByKey(coll, bankId, r.question_id)
         }
         else if (coll === 'mastered_questions') {

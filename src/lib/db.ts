@@ -232,7 +232,7 @@ export const idb = {
       req.onerror = () => reject(req.error)
     })
   },
-  async markWrong(bankId: number, questionId: number, streak?: number): Promise<void> {
+  async markWrong(bankId: number, questionId: number, streak?: number, totalWrongOverride?: number): Promise<number> {
     const db = await openDB()
     const exists = await new Promise<boolean>((resolve, reject) => {
       const t = db.transaction('wrong_questions', 'readonly')
@@ -241,15 +241,58 @@ export const idb = {
       req.onsuccess = () => resolve(req.result.some(x => x.question_id === questionId))
       req.onerror = () => reject(req.error)
     })
+    // 累计做错次数：传入 override（云同步带回）优先；否则错题本已有记录则 +1；
+    // 没有则从已掌握的历史累计值继承（若无则从 1 开始）
+    let totalWrong = 1
+    if (typeof totalWrongOverride === 'number') {
+      totalWrong = totalWrongOverride
+    } else if (exists) {
+      const cur = await this.getWrongRecord(bankId, questionId)
+      totalWrong = (cur?.total_wrong || 0) + 1
+    } else {
+      const masteredRec = await this.getMasteredRecord(bankId, questionId)
+      if (masteredRec?.total_wrong) totalWrong = masteredRec.total_wrong + 1
+    }
     if (!exists) {
       // 2026-08-19：correct_streak = 连续答对计数（错题重练答对累计，达到阈值自动转「已掌握」）
-      await tx('wrong_questions', 'readwrite', s => s.add({ bank_id: bankId, question_id: questionId, created_at: new Date().toISOString(), correct_streak: streak ?? 0 }))
-    } else if (typeof streak === 'number') {
-      // 记录已存在：传入 streak 则更新（答错清零 / 云同步带回计数）；不传则保留本地
-      await this.setWrongStreak(bankId, questionId, streak)
+      await tx('wrong_questions', 'readwrite', s => s.add({ bank_id: bankId, question_id: questionId, created_at: new Date().toISOString(), correct_streak: streak ?? 0, total_wrong: totalWrong }))
+    } else {
+      // 记录已存在：更新累计错误数 + 刷新连对 streak（答错时清零）
+      await this.setWrongRecord(bankId, questionId, { total_wrong: totalWrong, correct_streak: typeof streak === 'number' ? streak : 0 })
     }
     // 2026-08-16（方案 B）：做错自动取消「已掌握」——从 mastered_questions 移除该记录
     await this.removeMastered(bankId, questionId)
+    return totalWrong
+  },
+  // 查询已掌握中某条记录（含 total_wrong 历史累计）；不在已掌握返回 null
+  async getMasteredRecord(bankId: number, questionId: number): Promise<any | null> {
+    const db = await openDB()
+    return new Promise((resolve, reject) => {
+      const t = db.transaction('mastered_questions', 'readonly')
+      const idx = t.objectStore('mastered_questions').index('bank_id')
+      const req = idx.getAll(IDBKeyRange.only(bankId))
+      req.onsuccess = () => resolve(req.result.find(x => x.question_id === questionId) ?? null)
+      req.onerror = () => reject(req.error)
+    })
+  },
+  // 通用更新错题记录字段（含 total_wrong / correct_streak）
+  async setWrongRecord(bankId: number, questionId: number, patch: { total_wrong?: number; correct_streak?: number }): Promise<void> {
+    const db = await openDB()
+    await new Promise<void>((resolve, reject) => {
+      const t = db.transaction('wrong_questions', 'readwrite')
+      t.oncomplete = () => resolve()
+      t.onerror = () => reject(t.error)
+      const store = t.objectStore('wrong_questions')
+      const idx = store.index('bank_id')
+      const req = idx.openCursor(IDBKeyRange.only(bankId))
+      req.onsuccess = () => {
+        const c = req.result
+        if (c && c.value.question_id === questionId) {
+          const { synced_at, ...rest } = c.value
+          store.put({ ...rest, ...patch })
+        } else if (c) c.continue()
+      }
+    })
   },
   // 查询错题本中某条记录（含 correct_streak 连续答对计数）；不在错题本返回 null
   async getWrongRecord(bankId: number, questionId: number): Promise<any | null> {
@@ -329,6 +372,9 @@ export const idb = {
   },
   async markWrongMastered(bankId: number, questionId: number): Promise<void> {
     // 语义：从错题表移除 + 加入已掌握表（2026-08-15 修复：此前只删错题，已掌握无存储）
+    // total_wrong：转已掌握时保留错题记录的累计做错次数，供顽固错题统计
+    const wrongRec = await this.getWrongRecord(bankId, questionId)
+    const totalWrong = wrongRec?.total_wrong || 0
     const db = await openDB()
     await new Promise<void>((resolve, reject) => {
       const t = db.transaction(['wrong_questions', 'mastered_questions'], 'readwrite')
@@ -349,13 +395,21 @@ export const idb = {
       const mreq = midx.getAll(IDBKeyRange.only(bankId))
       mreq.onsuccess = () => {
         if (!mreq.result.some(x => x.question_id === questionId)) {
-          mstore.add({ bank_id: bankId, question_id: questionId, created_at: new Date().toISOString() })
+          mstore.add({ bank_id: bankId, question_id: questionId, created_at: new Date().toISOString(), total_wrong: totalWrong })
+        } else {
+          // 已存在：更新 total_wrong 取较大值
+          const rec = mreq.result.find(x => x.question_id === questionId)
+          const prev = rec?.total_wrong || 0
+          if (totalWrong > prev) mstore.put({ ...rec, total_wrong: totalWrong })
         }
       }
     })
   },
   async restoreWrongToPending(bankId: number, questionId: number): Promise<void> {
     // 语义：从已掌握表移除 + 加回错题表（2026-08-15 修复：此前只是重新 markWrong）
+    // total_wrong：已掌握移回错题时保留历史累计做错次数
+    const masteredRec = await this.getMasteredRecord(bankId, questionId)
+    const totalWrong = masteredRec?.total_wrong || 0
     const db = await openDB()
     await new Promise<void>((resolve, reject) => {
       const t = db.transaction(['wrong_questions', 'mastered_questions'], 'readwrite')
@@ -376,7 +430,7 @@ export const idb = {
       const wreq = widx.getAll(IDBKeyRange.only(bankId))
       wreq.onsuccess = () => {
         if (!wreq.result.some(x => x.question_id === questionId)) {
-          wstore.add({ bank_id: bankId, question_id: questionId, created_at: new Date().toISOString() })
+          wstore.add({ bank_id: bankId, question_id: questionId, created_at: new Date().toISOString(), total_wrong: totalWrong })
         }
       }
     })
@@ -389,6 +443,17 @@ export const idb = {
       const idx = t.objectStore('mastered_questions').index('bank_id')
       const req = idx.getAll(IDBKeyRange.only(bankId))
       req.onsuccess = () => resolve(req.result.map(x => x.question_id))
+      req.onerror = () => reject(req.error)
+    })
+  },
+  // 已掌握完整记录（含 total_wrong，供「曾错 n 次」展示）
+  async listMasteredRecords(bankId: number): Promise<any[]> {
+    const db = await openDB()
+    return new Promise((resolve, reject) => {
+      const t = db.transaction('mastered_questions', 'readonly')
+      const idx = t.objectStore('mastered_questions').index('bank_id')
+      const req = idx.getAll(IDBKeyRange.only(bankId))
+      req.onsuccess = () => resolve(req.result)
       req.onerror = () => reject(req.error)
     })
   },

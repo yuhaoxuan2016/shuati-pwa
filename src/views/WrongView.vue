@@ -72,6 +72,7 @@
         >
           <span class="item-index">{{ index + 1 }}</span>
           <span class="item-preview">{{ getQuestionPreview(id) }}</span>
+          <span v-if="totalWrongMap.get(id)" class="wrong-count-tag" :class="{ stubborn: (totalWrongMap.get(id) || 0) >= 3 }">🔁 做错 {{ totalWrongMap.get(id) }} 次</span>
           <span v-if="threshold > 0 && streakMap.get(id)" class="streak-tag" :class="{ near: (streakMap.get(id) || 0) >= threshold - 1 }">✅ 连对 {{ streakMap.get(id) }}/{{ threshold }}</span>
           <button class="quick-master-btn" title="标记已掌握" @click.stop="markMastered(id)">✓ 掌握</button>
           <button class="quick-del-btn" title="删除记录" @click.stop="removeWrong(id)">🗑</button>
@@ -106,6 +107,7 @@
         <ul v-if="!practicing" class="mastered-list">
           <li v-for="id in masteredIds" :key="id" @click="jumpToMastered(id)" class="mastered-item">
             <span>{{ getQuestionPreview(id) }}</span>
+            <span v-if="totalWrongMap.get(id)" class="wrong-count-tag" :class="{ stubborn: (totalWrongMap.get(id) || 0) >= 3 }">🔁 曾错 {{ totalWrongMap.get(id) }} 次</span>
             <button class="restore-btn" @click.stop="restoreToPending(id)">放回错题</button>
             <button class="quick-del-btn" title="删除记录" @click.stop="removeMastered(id)">🗑</button>
           </li>
@@ -130,6 +132,7 @@ const wrongIds = ref<number[]>([])
 const masteredIds = ref<number[]>([])
 const favoriteIds = ref<Set<number>>(new Set())
 const streakMap = ref<Map<number, number>>(new Map())  // 错题 id → 连续答对次数
+const totalWrongMap = ref<Map<number, number>>(new Map())  // 错题/已掌握 id → 累计做错次数（顽固错题统计）
 const threshold = ref(0)                               // 自动掌握阈值（0=关闭）
 const practicing = ref(false)
 const queue = ref<number[]>([])
@@ -199,14 +202,19 @@ onMounted(async () => {
 async function loadData() {
   try {
     allQuestions.value = await api.listQuestions(bankId)
-    const [wrongRecs, mastered, favs] = await Promise.all([
+    const [wrongRecs, masteredRecs, favs] = await Promise.all([
       api.listWrongRecords(bankId),
-      api.listMastered(bankId),
+      api.listMasteredRecords(bankId),
       api.listFavorites(bankId),
     ])
     wrongIds.value = wrongRecs.map((r: any) => r.question_id)
     streakMap.value = new Map(wrongRecs.map((r: any) => [r.question_id, r.correct_streak ?? 0]))
-    masteredIds.value = mastered
+    // 累计做错次数（错题/已掌握都记录，供顽固错题徽章）
+    totalWrongMap.value = new Map(wrongRecs.map((r: any) => [r.question_id, r.total_wrong ?? 0]))
+    for (const m of masteredRecs) {
+      if (!totalWrongMap.value.has(m.question_id)) totalWrongMap.value.set(m.question_id, m.total_wrong ?? 0)
+    }
+    masteredIds.value = masteredRecs.map((r: any) => r.question_id)
     favoriteIds.value = new Set(favs)
     threshold.value = await api.getWrongMasterThreshold()
   } catch (e) {
@@ -419,6 +427,8 @@ button:hover { background: var(--color-border-light); }
 .item-preview { flex: 1; font-size: 14px; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 2026-08-19：连续答对计数徽标 */
 .streak-tag { padding: 2px 8px; border-radius: 10px; background: var(--color-success-light); color: var(--color-success-deep); font-size: 11px; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+.wrong-count-tag { padding: 2px 8px; border-radius: 10px; background: var(--color-warning-bg, #fff8e1); color: var(--color-warning-text, #8a6d1a); font-size: 11px; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+.wrong-count-tag.stubborn { background: var(--color-danger-light); color: var(--color-danger); border: 1px solid var(--color-danger); }
 .streak-tag.near { background: var(--color-warning-bg); color: var(--color-warning-text); }
 .quick-master-btn { padding: 4px 10px; border: 1px solid var(--color-success); border-radius: var(--radius-sm); background: var(--color-success-light); color: var(--color-success); cursor: pointer; font-size: 12px; white-space: nowrap; flex-shrink: 0; opacity: 0; transition: opacity 0.15s; }
 .wrong-item:hover .quick-master-btn, .wrong-item.active .quick-master-btn { opacity: 1; }
